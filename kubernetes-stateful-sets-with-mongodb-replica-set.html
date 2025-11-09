@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description"
+    content="Learn how to deploy MongoDB on Kubernetes using StatefulSets, headless Services, replica sets, ConfigMaps, Secrets, and port forwarding for high availability." />
+  <meta name="keywords"
+    content="Kubernetes, K8s, StatefulSet, Headless Service, MongoDB, Replica Set, Pods, Deployments, Services, Ingress, NodePort, External IP, ExternalName, Port Forwarding, Namespaces, Contexts, Clusters, K3d, ConfigMaps, Secrets, File Mounts, Environment Variables, Manifests, Docker, Container, Containerd, Kubernetes tutorial, Kubernetes guide" />
+  <meta name="author" content="Ilman Iqbal" />
+  <title>Kubernetes StatefulSets with MongoDB: High Availability and Replica Sets</title>
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Article",
+      "headline": "Kubernetes StatefulSets with MongoDB: High Availability and Replica Sets",
+      "author": {
+          "@type": "Person",
+          "name": "Ilman Iqbal",
+          "url": "https://www.linkedin.com/in/ilman-iqbal-096308172"
+      },
+      "publisher": {
+          "@type": "Organization",
+          "name": "Ilman Iqbal",
+          "url": "https://ilmaniqbal.com",
+          "logo": {
+              "@type": "ImageObject",
+              "url": "https://ilmaniqbal.com/img/logo.png"
+          }
+      },
+      "datePublished": "2025-09-28",
+      "dateModified": "2025-09-28",
+      "image": "https://ilmaniqbal.com/img/stateful-set-1.png",
+      "description": "Step-by-step Kubernetes guide covering StatefulSets, Pods, Deployments, Services, Ingress, NodePorts, External IPs, ConfigMaps, Secrets, port forwarding, namespaces, contexts, clusters, K3d, headless Services, and deploying MongoDB with replica sets for high availability and persistence.",
+      "articleBody": "This hands-on Kubernetes guide explains how to set up namespaces, and deploy applications using Pods and Deployments.\n\nIt covers headless Services, demonstrating how to provide stable DNS names for StatefulSets and enable pod-to-pod communication. For example, MongoDB Pods get DNS names like mongo-0.mongo-service.user-management-db.svc.cluster.local.\n\nStatefulSets are discussed for deploying MongoDB with persistent volumes, including replica set initialization using commands like rs.initiate() and rs.status().\n\nFor local development, the guide explains running MongoDB in Docker with replica sets enabled and reconfiguring localhost access for application connectivity.\n\nAdditional topics include best practices for manifests and deployment strategies in production-ready applications.",
+      "articleSection": [
+        "Kubernetes StatefulSets",
+        "Headless Services",
+        "MongoDB Replica Sets",
+        "Replica Set Initialization",
+        "Kubernetes Manifests",
+        "Local Docker Testing"
+      ],
+      "inLanguage": "en",
+      "keywords": "Kubernetes, K8s, StatefulSet, Headless Service, MongoDB, Replica Set, Pods, Deployments, Services, Ingress, NodePort, External IP, ExternalName, Port Forwarding, Namespaces, Contexts, Clusters, K3d, ConfigMaps, Secrets, File Mounts, Environment Variables, Manifests, Docker, Container, Containerd, Kubernetes tutorial, Kubernetes guide",
+      "mainEntityOfPage": {
+        "@type": "WebPage",
+        "@id": "https://ilmaniqbal.com/kubernetes-stateful-sets-with-mongodb-replica-set.html"
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro&display=swap" rel="stylesheet" />
+  <!-- https://fonts.google.com/ -->
+  <link href="css/bootstrap.min.css" rel="stylesheet">
+  <link href="css/blog.css" rel="stylesheet">
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-8PPCHX9PDV"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { dataLayer.push(arguments); }
+    gtag('js', new Date());
+
+    gtag('config', 'G-8PPCHX9PDV');
+  </script>
+</head>
+
+<body>
+  <div class="container">
+
+    <header class="site-header">
+      <a href="index.html" class="site-logo-wrapper" style="text-decoration: none; color: inherit;">
+        <div class="site-logo"><i class="fas fa-code fa-2x"></i></div>
+        <h1>Ilman Iqbal's Blog</h1>
+      </a>
+    </header>
+
+    <h2 class="tm-post-title">Kubernetes StatefulSets with MongoDB: High Availability and Replica Sets</h2>
+    <p class="meta">Sep 28, 2025 posted by Ilman Iqbal</p>
+
+    <p>
+      In the <a href="https://ilmaniqbal.com/kubernetes-fundamentals.html" target="_blank">
+        Kubernetes Made Simple </a> blog post, we covered Kubernetes fundamentals such as Pods, Deployments, Services,
+      ConfigMaps, Secrets, port forwarding, and Ingress.
+
+      Now, in this blog post, let's learn how to deploy MongoDB on Kubernetes using a StatefulSet and a headless
+      Service to enable stable DNS names, persistent storage, and high availability with replica sets. This guide covers
+      setting up a MongoDB replica set with two members, configuring the StatefulSet and
+      Service manifests, and verifying the deployment to ensure data redundancy and resilience against pod failures.
+    </p>
+
+    <img id="half-width" src="img/stateful-set-1.png" alt="mysql-to-snowflake-data-migration-airbyte" />
+
+    <h3>Deploying MongoDB in Kubernetes</h3>
+    <p>
+      MongoDB is often deployed as a <strong>replica set</strong> to provide high availability and data redundancy.
+      In Kubernetes, the recommended way is to use a <code>StatefulSet</code> combined with a
+      <strong>headless Service</strong> for stable Pod DNS names.
+    </p>
+
+    <h4>Headless Service (Pod discovery)</h4>
+    <p>
+      A <strong>headless Service</strong> (<code>clusterIP: None</code>) does not load balance traffic like a normal
+      Service.
+      Instead, it assigns each Pod in a StatefulSet its own stable DNS name, in the format:
+    </p>
+    <pre><code>&lt;pod-name&gt;.&lt;service-name&gt;.&lt;namespace&gt;.svc.cluster.local</code></pre>
+    <p>
+      For example, a StatefulSet with 2 MongoDB Pods will have DNS entries like:
+    </p>
+    <ul>
+      <li><code>mongo-0.mongo-service.user-management-db.svc.cluster.local</code></li>
+      <li><code>mongo-1.mongo-service.user-management-db.svc.cluster.local</code></li>
+    </ul>
+    <p>
+      This allows MongoDB or any clustered application to connect directly to each replica, which is essential for
+      replication and failover.
+      Without a headless Service, clients would only see a single IP and could not address individual Pods.
+    </p>
+
+    <pre><code># mongo-headless-svc.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo-service            # Headless service name, must match StatefulSet's serviceName
+  namespace: user-management-db  # Runs inside the user-management-db namespace
+spec:
+  ports:
+    - port: 27017                # Exposes MongoDB on its default port
+      name: mongo                # Port name used by clients to reference
+  clusterIP: None                # No cluster IP; enables stable DNS for StatefulSet pods
+  selector:
+    app: mongo                   # Routes traffic to pods with label app=mongo
+</code></pre>
+
+    <h4>StatefulSet (MongoDB pods)</h4>
+    <p>
+      A StatefulSet is used to run MongoDB Pods that need a stable identity and persistent storage. This is important
+      for a replica set to work correctly.
+    </p>
+    <ul>
+      <li><strong>Stable network identity:</strong> Each Pod gets a fixed name like <code>mongo-0</code>,
+        <code>mongo-1</code>. Even if the Pod stops and restarts or rescheduled (moved to another node in the cluster),
+        its name and DNS address remain the same. DNS names are in the format:
+        <code>&lt;pod-name&gt;.&lt;service-name&gt;.&lt;namespace&gt;.svc.cluster.local</code>.
+      </li>
+      <li><strong>Persistent storage:</strong> Each Pod gets its own persistent volume via
+        <code>volumeClaimTemplates</code>. This means its data is preserved across restarts, crashes, or rescheduling.
+      </li>
+    </ul>
+    <p>
+      Together with a headless Service, this ensures:
+    </p>
+    <ul>
+      <li>MongoDB replica set members can always reach each other using known DNS names.</li>
+      <li>Each replica keeps its data even if the Pod is stopped or moved to another node.</li>
+    </ul>
+
+
+    <pre><code># mongo-statefulset.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongo                                 # Name of the StatefulSet (base name for pods: mongo-0, mongo-1, etc.)
+  namespace: user-management-db               # Namespace where MongoDB will run
+spec:
+  serviceName: "mongo-service"                # Must match the headless Service for stable DNS resolution
+  replicas: 2                                 # Number of MongoDB replicas in the replica set
+  selector:
+    matchLabels:
+      app: mongo                              # Ensures StatefulSet manages only Pods with this label
+  template:
+    metadata:
+      labels:
+        app: mongo                            # Label added to Pods so they are matched by the StatefulSet
+    spec:
+      containers:
+      - name: mongo                           # Container name
+        image: mongo:7.0                      # MongoDB version 7.0 Docker image
+        command:                              # Override default command to enable replica set mode
+          - "mongod"
+          - "--replSet=rs0"                   # Initialize replica set named "rs0"
+          - "--bind_ip=0.0.0.0"               # Allow connections from all network interfaces
+        ports:
+          - containerPort: 27017              # MongoDB default port inside the Pod
+        volumeMounts:
+          - name: mongo-persistent-storage    # Attach persistent volume
+            mountPath: /data/db               # MongoDB data directory (persists data across Pod restarts)
+  volumeClaimTemplates:
+  - metadata:
+      name: mongo-persistent-storage          # Name referenced in volumeMounts above
+    spec:
+      accessModes: [ "ReadWriteOnce" ]        # Only one Pod can mount the volume at a time (per node)
+      resources:
+        requests:
+          storage: 1Gi                        # Request 1Gi of persistent storage for each replica
+</code></pre>
+
+    <h4>Deploying the manifests</h4>
+    <p>
+      Apply both the Service and StatefulSet manifests into the <code>user-management-db</code> namespace:
+    </p>
+    <pre><code>kubectl apply -f mongo-headless-svc.yaml -n user-management-db
+kubectl apply -f mongo-statefulset.yaml -n user-management-db
+kubectl get pods -n user-management-db
+</code></pre>
+
+    <h4>Initializing the replica set</h4>
+    <p>
+      Once the MongoDB Pods are up and running, you need to initialize the replica set so that clients can discover the
+      <strong>primary</strong> and perform writes. Without this step, you’ll see errors like
+      <code>MongoServerError[NotYetInitialized]</code> when checking status.
+    </p>
+
+    <h5>Step 1: Verify Pods are running</h5>
+    <pre><code>kubectl get pods -n user-management-db
+# Example output:
+NAME      READY   STATUS    RESTARTS   AGE
+mongo-0   1/1     Running   0          5m57s
+mongo-1   1/1     Running   0          2m45s
+</code></pre>
+
+    <h5>Step 2: Exec into the first Pod</h5>
+    <pre><code>kubectl exec -it mongo-0 -n user-management-db -- mongosh
+</code></pre>
+
+    <h5>Step 3: Check replica set status</h5>
+    <pre><code>test> rs.status()
+MongoServerError[NotYetInitialized]: no replset config has been received
+</code></pre>
+    <p>
+      This error is expected because the replica set is not yet initialized.
+    </p>
+
+    <h5>Step 4: Initialize the replica set</h5>
+    <pre><code>test> rs.initiate({
+  _id: "rs0",
+  members: [
+    { _id: 0, host: "mongo-0.mongo-service.user-management-db.svc.cluster.local:27017" },
+    { _id: 1, host: "mongo-1.mongo-service.user-management-db.svc.cluster.local:27017" } // IMPORTANT: include this so apps can connect to both nodes
+  ]
+})
+{ ok: 1 }
+</code></pre>
+
+    <h5>Step 5: Verify replica set</h5>
+    <pre><code>rs0 [direct: other] test> rs.status()
+{
+  set: 'rs0',
+  members: [
+    { _id: 0, name: "mongo-0.mongo-service.user-management-db.svc.cluster.local:27017", stateStr: "PRIMARY", ... },
+    { _id: 1, name: "mongo-1.mongo-service.user-management-db.svc.cluster.local:27017", stateStr: "SECONDARY", ... }
+  ],
+  ...
+}
+</code></pre>
+    <h4>Connection string for your app</h4>
+    <p>
+      After initialization, applications should connect using the replica set URI.
+      This ensures automatic failover if one Pod goes down:
+    </p>
+    <pre><code>mongodb://mongo-0.mongo-service.user-management-db.svc.cluster.local:27017,
+mongo-1.mongo-service.user-management-db.svc.cluster.local:27017/user_management?replicaSet=rs0
+</code></pre>
+
+    <div class="tip">
+      <strong>Note on StatefulSet DNS:</strong>
+      Each Pod gets a predictable DNS name in the format
+      <code>&lt;pod-name&gt;.&lt;service-name&gt;.&lt;namespace&gt;.svc.cluster.local</code>.
+      Example: <code>mongo-0.mongo-service.user-management-db.svc.cluster.local</code>.
+      This is what makes replica set members discoverable in Kubernetes.
+    </div>
+
+    <h4>Debugging and accessing MongoDB Pods</h4>
+    <p>
+      Once MongoDB Pods are running, you can connect directly to a Pod or connect via the replica set connection string.
+      The behavior is different:
+    </p>
+
+    <h5>Direct Pod connection</h5>
+    <pre><code>kubectl exec -it mongo-0 -n user-management-db -- mongosh
+</code></pre>
+    <p>
+      This opens a shell connected to <code>127.0.0.1:27017</code> inside <code>mongo-0</code>.
+      You can run commands, but you may hit errors like:
+    </p>
+    <pre><code>MongoServerError[NotWritablePrimary]: not primary</code></pre>
+    <p>
+      This happens because you’re talking to a single <em>secondary</em> node in the replica set.
+      By default, secondaries cannot perform write operations.
+    </p>
+
+    <h5>Replica set connection</h5>
+    <pre><code>kubectl exec -it mongo-0 -n user-management-db -- bash
+mongosh "mongodb://mongo-0.mongo-service.user-management-db.svc.cluster.local:27017,
+mongo-1.mongo-service.user-management-db.svc.cluster.local:27017/user_management?replicaSet=rs0"
+</code></pre>
+    <p>
+      Using the replica set connection string tells the MongoDB driver to discover all members and
+      automatically route writes to the <strong>primary</strong>.
+      In this case, you’ll see:
+    </p>
+    <pre><code>rs0 [primary] user_management> db.users.deleteMany({})
+{ acknowledged: true, deletedCount: 1 }
+</code></pre>
+
+    <div class="tip">
+      <strong>Key takeaway:</strong>
+      Always connect to MongoDB using the replica set URI in Kubernetes.
+      This ensures your client knows which node is primary, and failover works correctly
+      if the primary goes down.
+    </div>
+
+    <h5>Startup warnings</h5>
+    <p>
+      When connecting, MongoDB may show warnings such as:
+    </p>
+    <ul>
+      <li><code>Access control is not enabled</code>: authentication is not configured yet (open access).</li>
+      <li><code>You are running this process as root</code>: the Pod runs as root by default in this simple manifest.
+      </li>
+      <li><code>vm.max_map_count is too low</code>: kernel tuning recommendation, usually safe for dev.</li>
+    </ul>
+    <p>
+      These are normal in a simple demo deployment but should be addressed in production.
+    </p>
+
+    <h3>Appendix: Running MongoDB Replica Set in Docker (Local Testing)</h3>
+    <p>
+      For local development or testing, you can run a single MongoDB container with replica set enabled.
+      Enabling the replica set is important for applications expecting <code>replicaSet</code> in the connection string.
+      This is simpler than a full StatefulSet in Kubernetes but lacks cluster-level stability and scaling.
+    </p>
+
+
+    <h5>Step 1: Start the MongoDB container</h5>
+    <pre><code>docker run -d \
+  --name curity-mongo \
+  -p 27017:27017 \
+  mongo:7.0 \
+  --replSet rs0 \
+  --bind_ip_all
+</code></pre>
+    <p>
+      The <code>--replSet rs0</code> flag enables replica set mode, and <code>--bind_ip_all</code> allows connections
+      from outside the container.
+    </p>
+
+    <h5>Step 2: Initiate the replica set inside the container</h5>
+    <pre><code>docker exec -it curity-mongo bash
+mongosh
+
+# Initialize the replica set
+rs.initiate()
+rs.status()
+</code></pre>
+
+    <h5>Step 3: Reconfigure for localhost access</h5>
+    <pre><code># Required to connect from outside the container using localhost
+cfg = rs.conf()
+cfg.members[0].host = "localhost:27017"
+rs.reconfig(cfg, {force: true})
+rs.status()
+</code></pre>
+
+    <h5>Step 4: Use the database</h5>
+    <pre><code>use user_management
+
+# Connection string for apps without mongodb authentication:
+mongodb://localhost:27017/user_management?replicaSet=rs0
+</code></pre>
+
+    <div class="tip">
+      <strong>Note:</strong> This setup is for local development only. For production, use a proper MongoDB cluster with
+      multiple nodes and persistent storage.
+    </div>
+
+
+    <h3>Quick verification checklist (copy &amp; paste)</h3>
+    <pre><code># Create namespaces
+kubectl create namespace user-management-db
+kubectl apply -f mongo-headless-svc.yaml -n user-management-db
+kubectl apply -f mongo-statefulset.yaml -n user-management-db
+kubectl get pods -n user-management-db
+kubectl exec -it mongo-0 -n user-management-db -- mongosh
+rs.initiate()
+rs.status()</code></pre>
+
+    <h3>Final notes &amp; recommendations</h3>
+    <ul>
+      <li>Always connect via replica set URI for reliability.</li>
+      <li>Use persistent volumes for production.</li>
+      <li>Enable authentication and TLS for security.</li>
+      <li>For production, scale beyond two replicas for better fault tolerance.</li>
+    </ul>
+</body>
+
+</html>

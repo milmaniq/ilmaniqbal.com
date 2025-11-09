@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description"
+        content="Learn how to seamlessly migrate data from MySQL to Snowflake using Airbyte, a powerful open-source data integration tool." />
+    <meta name="keywords"
+        content="MySQL to Snowflake, data migration, Airbyte, data pipeline, Snowflake Data Warehouse, ETL, data integration" />
+    <meta name="author" content="Ilman Iqbal" />
+    <title>Effortless Data Migration: Moving Data from MySQL to Snowflake using Airbyte</title>
+    <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "Article",
+            "headline": "Effortless Data Migration: Moving Data from MySQL to Snowflake using Airbyte",
+            "author": {
+                "@type": "Person",
+                "name": "Ilman Iqbal",
+                "url": "https://www.linkedin.com/in/ilman-iqbal-096308172"
+            },
+            "publisher": {
+                "@type": "Organization",
+                "name": "Ilman Iqbal",
+                "url": "https://ilmaniqbal.com",
+                "logo": {
+                    "@type": "ImageObject",
+                    "url": "https://ilmaniqbal.com/img/logo.png"
+                }
+            },
+            "datePublished": "2024-04-14",
+            "dateModified": "2025-09-28",
+            "image": [
+                "https://ilmaniqbal.com/img/img-01.jpg",
+                "https://ilmaniqbal.com/img/airbyte-1.png",
+                "https://ilmaniqbal.com/img/airbyte-2.png",
+                "https://ilmaniqbal.com/img/airbyte-6.png",
+                "https://ilmaniqbal.com/img/airbyte-7.png",
+                "https://ilmaniqbal.com/img/airbyte-8.png",
+                "https://ilmaniqbal.com/img/airbyte-10.png"
+            ],
+            "description": "Step-by-step guide to migrate data from MySQL to Snowflake using Airbyte. Learn how to set up connections, enable CDC, configure sources and destinations, choose sync modes, and handle large-scale data migration efficiently.",
+            "articleBody": "This article explains how to migrate data from a MySQL database to Snowflake using Airbyte. It covers connecting to MySQL, configuring the source and destination connectors, enabling CDC, setting up schedules, and selecting tables and sync modes. Best practices and limitations are discussed to ensure reliable and efficient data migration, including handling large data volumes, connectivity restrictions, and monitoring pipeline execution.",
+            "keywords": "MySQL to Snowflake, data migration, Airbyte, data pipeline, Snowflake Data Warehouse, ETL, data integration",
+            "mainEntityOfPage": {
+                "@type": "WebPage",
+                "@id": "https://ilmaniqbal.com/mysql-to-snowflake-data-migration-airbyte.html"
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro&display=swap" rel="stylesheet" />
+    <!-- https://fonts.google.com/ -->
+    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/blog.css" rel="stylesheet">
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-8PPCHX9PDV"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { dataLayer.push(arguments); }
+        gtag('js', new Date());
+
+        gtag('config', 'G-8PPCHX9PDV');
+    </script>
+</head>
+
+<body>
+    <div class="container">
+        <header class="site-header">
+            <a href="index.html" class="site-logo-wrapper" style="text-decoration: none; color: inherit;">
+                <div class="site-logo"><i class="fas fa-code fa-2x"></i></div>
+                <h1>Ilman Iqbal's Blog</h1>
+            </a>
+        </header>
+
+        <main>
+            <article>
+                <h2 class="tm-post-title">Effortless Data Migration: Moving Data from MySQL to Snowflake using Airbyte
+                </h2>
+                <p class="meta">Apr 14, 2024 posted by Ilman Iqbal</p>
+
+                <p>This article explains on how data can be moved from a MySQL database to Snowflake via Airbyte.</p>
+
+                <img id="half-width" src="img/img-01.jpg" alt="mysql-to-snowflake-data-migration-airbyte" />
+
+                <p>
+                    Data is migrated from one system to another using data pipelines.
+                    Data pipeline is a way for moving data from a source to a destination while transforming
+                    it.
+                    Imagine, you want to move data from MySQL to Snowflake, then MySQL is the source and
+                    Snowflake is the destination.
+                    In Snowflake, raw data from the pipeline is loaded into a staging table and then
+                    inserted into a final table.
+                    This final table would be the destination of the pipeline.
+                </p>
+
+                <h4 class="mt-5">
+                    Advantages of using Modern Data pipelines for migrating data
+                </h4>
+
+                <ul class="ml-5">
+                    <li>Automate the full migration workflow including loading raw data into a staging
+                        table
+                        and then inserting it into the destination reporting tables. </li>
+
+                    <li>Handle migration of large volumes of data (scalable)</li>
+
+                    <li>Transform data to various formats, structures and values </li>
+
+                    <li>Run data quality checks and validations </li>
+
+                    <li>Monitor and track the migration process </li>
+
+                    <li>Handle errors during migration </li>
+
+                    <li>Reuse transformation in other data pipelines </li>
+                </ul>
+
+                <h4 class="mt-5">
+                    Understanding the Components
+                </h4>
+
+                <div class="ml-5">
+                    <ul>
+                        <li id="bold-font">MySQL</li>
+                        <p>MySQL is an open-source relational database management system (RDBMS) that is
+                            commonly used for Online Transaction Processing (OLTP).</p>
+
+                        <p>
+                            OLTP databases are designed to handle a large volume of transactions with
+                            concurrency control. Transactions are operations that modify data, such as
+                            INSERT, UPDATE, or DELETE statements.</p>
+
+                        <p>
+                            CDC is a method of extracting data from a database. CDC works by reading changes
+                            using the MySQL Binary Log. To enable Binary Log in MySQL, you must add the
+                            following lines under [mysqld] section to the MySQL config file, usually located
+                            at <code>/etc/my.cnf</code> or <code>/etc/my.cnf.d/server.cnf</code> or
+                            <code>/etc/mysql/my.cnf</code> or
+                            <code>/etc/mysql.cnf</code>:
+                        </p>
+
+                        <pre>
+binlog_do_db=wurth_live
+log-bin=/var/lib/mysqllogs/1-db1-binary-log
+binlog-format=ROW
+server-id=1
+                        </pre>
+
+                        <p>
+                            After making the above change, remember to restart the MySQL server as: sudo
+                            service mysql restart
+                        </p>
+
+                        <li id="bold-font">Snowflake</li>
+                        <p>Snowflake is a cloud data platform designed for OLAP workloads. It is used to
+                            store, process and analyze large volumes of data. It uses SQL for querying data.
+
+                        </p>
+                        <p class="mb-0">
+                            Reasons for migrating data from OLTP databases to OLAP databases:
+                        <ul class="ml-5 mt-0">
+                            <li>To generate reports to support in business planning</li>
+
+                            <li>To improve performance when executing complex queries</li>
+
+                            <li>To aggregate and summarize the transactional data across various dimensions
+                                to
+                                support in analysis</li>
+
+                            <li>To develop decision support systems that enable decision makers who can use
+                                interactive tools for exploring data</li>
+
+                            <li>To analyze historical data and gain insights for forecasting and trend
+                                analysis</li>
+                        </ul>
+                        </p>
+
+                        <li id="bold-font">Airbyte</li>
+                        <p>
+                            Airbyte is an integration platform designed to build data pipelines and
+                            replicate data from a source to a destination. Using Airbyte, you have control
+                            over how often your data syncs, what specific data gets replicated, and the way
+                            it's stored in the destination. It's all about simplifying the task of moving
+                            and organizing data, especially for analytics and business insights.
+                        </p>
+                    </ul>
+                </div>
+
+                <h4 class="mt-5">
+                    How to setup a new Connection between a MySQL source and Snowflake destination in
+                    Airbyte?
+                </h4>
+                <p>
+                    You can follow the following steps to create a new connection in airbyte
+                </p>
+
+                <ol>
+                    <li>
+                        <p>Select the ‘Connections’ Menu in the left side of the window and click on the ‘+
+                            New connection’ button.
+                        </p>
+                        <img id="full-width" src="img/airbyte-1.png" alt="airbyte-1" />
+                        <p>This will take you to the ‘Define Source’ step.</p>
+                    </li>
+
+                    <li>
+                        <p>In the ‘Define Source’ step, select the option to ‘Set up a new source’ and
+                            select MySQL from the list of source connectors.</p>
+                        <img id="full-width" src="img/airbyte-2.png" alt="airbyte-2" />
+                    </li>
+
+                    <li>
+                        <p>Configure the MySQL source connector by entering the host, port, username,
+                            password and the name of the database. Remember to select ‘Read Changes using
+                            Binary Log (CDC)’ as the Update Method (i.e. the data extraction method from the
+                            database)</p>
+                        <img id="half-width" src="img/airbyte-8.png" alt="airbyte-8" />
+                        <p>After configuring the source connector, click on 'Set up source' button. This
+                            will take you to the ‘Define Destination’ step.</p>
+                    </li>
+
+                    <li>
+                        <p>In the ‘Define Destination’ step, select the option to ‘Set up a new Destination’
+                            and select Snowflake from the list of destination connectors.</p>
+                        <img id="full-width" src="img/airbyte-7.png" alt="airbyte-7" />
+                    </li>
+
+                    <li>
+                        <p>Configure the Snowflake destination connector by entering the host, database,
+                            schema, username, authorization method, role and warehouse.</p>
+                        <img id="half-width" src="img/airbyte-10.png" alt="airbyte-10" />
+                        <p>Configure the Snowflake destination connector by entering the host, database,
+                            schema, username, authorization method, role and warehouse.</p>
+                    </li>
+
+                    <li>
+                        <p>In the ‘Define Connection’ step, Airbyte will fetch the schema of the data
+                            source. If the schema fetch is successful, you can configure the connection by
+                            entering a name for the connection and selecting the schedule type (i.e. how the
+                            sync for this connection needs to be carried out – scheduled, manual or cron).
+                            You must also select the tables that need to be replicated and you must select
+                            the sync modes that must be used for each table for replication. (More details
+                            on the sync modes are given later in this article).</p>
+                        <img id="full-width" src="img/airbyte-6.png" alt="airbyte-6" />
+                        <p>After configuring the connection, click on 'Set up connection' button. This will
+                            successfully create an airbyte connection that is capable of replicating data
+                            from the MySQL source to the Snowflake destination.</p>
+                    </li>
+                </ol>
+
+                <h4 class="mt-5">
+                    Limitations
+                </h4>
+
+                <ul class="ml-5">
+                    <li id="bold-font">Large Data Sync Limitations</li>
+                    <p>Syncing data from a MySQL source to a Snowflake destination using Airbyte could lead
+                        to failures during the sync process due to various factors such as network speeds
+                        and system performance. The amount of data being transferred over the network,
+                        coupled with the processing power required by both the source and destination
+                        systems, can strain resources and potentially result in timeouts or failures. It's
+                        crucial to consider optimizing network infrastructure, increasing system resources,
+                        or implementing data partitioning strategies to mitigate these limitations and
+                        ensure successful data synchronization. </p>
+
+                    <li id="bold-font">Connectivity Restrictions</li>
+                    <p>In some cases, Airbyte may not be directly allowed to establish connections to the
+                        MySQL source due to regional or organizational restrictions. These restrictions
+                        could be enforced by network firewalls, security policies, or access controls
+                        implemented by the organization hosting the MySQL database. To overcome this
+                        limitation, it may be necessary to work closely with network administrators or IT
+                        security teams to whitelist Airbyte's IP addresses, configure VPN access, or explore
+                        alternative connectivity options such as SSH tunneling, or deploying Airbyte within
+                        the same network environment as the MySQL source or export tables from the MySQL
+                        source into files, which can then be transferred to the Snowflake destination for
+                        synchronization. By addressing these connectivity restrictions, organizations can
+                        ensure seamless data flow between MySQL and Snowflake through Airbyte while
+                        maintaining compliance with security policies and regulations.</p>
+                </ul>
+
+                <h4 class="mt-5">
+                    Appendix
+                </h4>
+
+                <ul class="ml-5">
+                    <li id="bold-font">Sync modes</li>
+                    <p>Sync modes are the different ways in which airbyte will read from a source and write
+                        to a destination. The following are the sync modes that are supported in airbyte:
+                    <ul class="ml-5">
+                        <li>Incremental Append + Deduped: Read latest data from the source (since the last
+                            sync job) and append data to existing tables in the destination, also removes
+                            data duplicates based on a primary key</li>
+
+                        <li>Full Refresh Overwrite: Read all data from the source and overwrite data to the
+                            destination by first deleting existing data in the destination</li>
+
+                        <li>Full Refresh Append: Read all data from the source and append data to existing
+                            tables in the destination</li>
+
+                        <li>Incremental Append: Read latest data from the source (since the last sync job)
+                            and append data to existing tables in the destination</li>
+                    </ul>
+                    </p>
+                </ul>
+            </article>
+
+            <footer>
+                <hr />
+            </footer>
+        </main>
+    </div>
+</body>
+
+</html>

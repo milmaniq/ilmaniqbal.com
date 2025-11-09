@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description"
+    content="Explore Ilman Iqbal's blog on tech innovations. Learn about Kubernetes and StatefulSets with MongoDB, Helm, MySQL to Snowflake data migration, Dockerizing Spring Boot applications, and Jenkins CI/CD setups." />
+  <meta name="keywords"
+    content="Ilman Iqbal, tech blog, MySQL, Snowflake, Airbyte, Docker, Spring Boot, Jenkins, CI/CD, Docker Compose, Kubernetes, Ingress, MongoDB, Helm tech tutorials" />
+  <meta name="author" content="Ilman Iqbal" />
+  <title>Ilman Iqbal's Tech Blog | Tutorials on Docker, Kubernetes, Helm, Jenkins, Snowflake, Airbyte, MySQL and Spring
+    Boot</title>
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "Ilman Iqbal's Blog",
+      "url": "https://ilmaniqbal.com",
+      "description": "Ilman Iqbal's blog provides tutorials, guides, and insights on modern software development technologies including Docker, Kubernetes, Helm, Jenkins, Snowflake, Airbyte, MySQL, Spring Boot and more.",
+      "publisher": {
+          "@type": "Organization",
+          "name": "Ilman Iqbal",
+          "url": "https://ilmaniqbal.com",
+          "logo": {
+              "@type": "ImageObject",
+              "url": "https://ilmaniqbal.com/img/logo.png"
+          }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600;700&display=swap"
+    rel="stylesheet" />
+  <link href="css/bootstrap.min.css" rel="stylesheet" />
+  <link href="css/blog.css" rel="stylesheet" />
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-8PPCHX9PDV"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { dataLayer.push(arguments); }
+    gtag("js", new Date());
+    gtag("config", "G-8PPCHX9PDV");
+  </script>
+  <style>
+    body {
+      font-family: 'Source Sans Pro', sans-serif;
+      background-color: #f8f8f8;
+      color: #333;
+      margin: 0;
+      padding: 0;
+    }
+
+    header.site-header {
+      width: 100%;
+      padding: 60px 40px 40px 40px;
+      text-align: center;
+    }
+
+    header.site-header .site-logo i {
+      font-size: 50px;
+      color: #1f6feb;
+    }
+
+    header.site-header h1 {
+      font-size: 42px;
+      font-weight: 700;
+      margin: 16px 0 12px 0;
+      color: #1f6feb;
+      letter-spacing: 1px;
+    }
+
+    header.site-header h2 {
+      font-size: 22px;
+      font-weight: 400;
+      margin: 0 auto;
+      max-width: 900px;
+      color: #555;
+      line-height: 1.6;
+    }
+
+    main.container {
+      width: 100%;
+      max-width: 1400px;
+      padding: 0 40px;
+      margin: 0 auto;
+    }
+
+    .row.posts-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 30px;
+      margin-bottom: 50px;
+    }
+
+    .post-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
+      flex: 1 1 calc(33% - 30px);
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .post-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
+    }
+
+    .post-card img {
+      max-width: 100%;
+      border-radius: 8px;
+    }
+
+    .post-card h2 {
+      font-size: 24px;
+      margin-top: 16px;
+      color: #1f6feb;
+      font-weight: 700;
+    }
+
+    .post-card p {
+      margin-top: 12px;
+      color: #555;
+      flex-grow: 1;
+      line-height: 1.5;
+    }
+
+    .post-meta {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 16px;
+      font-weight: 600;
+      color: #1f6feb;
+      font-size: 14px;
+    }
+
+    footer {
+      text-align: center;
+      padding: 20px 0;
+      font-size: 14px;
+      color: #888;
+      border-top: 1px solid #ddd;
+    }
+
+    @media (max-width: 1200px) {
+      .post-card {
+        flex: 1 1 calc(50% - 30px);
+      }
+    }
+
+    @media (max-width: 768px) {
+      .post-card {
+        flex: 1 1 100%;
+      }
+
+      header.site-header h1 {
+        font-size: 32px;
+      }
+
+      header.site-header h2 {
+        font-size: 18px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <header class="site-header">
+    <div class="site-logo"><i class="fas fa-code"></i></div>
+    <h1>Ilman Iqbal's Tech Blog</h1>
+    <h2>
+      Welcome! Discover insightful tutorials and guides on modern software development. Learn about Docker,
+      Jenkins, Spring Boot, MySQL, Snowflake, and more to enhance your development workflow and architecture.
+    </h2>
+  </header>
+
+  <main class="container">
+    <div class="row posts-row">
+      <div class="post-card">
+        <a href="kubernetes-fundamentals.html">
+          <img src="img/k8s-1.png" alt="Kubernetes App Deployment" />
+          <h2>Kubernetes Made Simple: A Hands-On Guide to Pods, Deployments, Services, Port Forwarding, Ingress, Config
+            Maps
+            and Secrets</h2>
+        </a>
+        <p>Learn how to deploy a complete application stack on Kubernetes, from Pods, Deployments, and Services to
+          Config Maps and Secrets.
+          Discover how to expose apps externally via Ingress, manage traffic with port forwarding and external IPs, and
+          securely handle configurations with ConfigMaps and Secrets—all in a practical, hands-on way.</p>
+        <div class="post-meta">
+          <span>Kubernetes . MongoDB . Docker</span>
+          <span>Sep 28, 2025</span>
+        </div>
+      </div>
+
+      <div class="post-card">
+        <a href="kubernetes-stateful-sets-with-mongodb-replica-set.html">
+          <img src="img/stateful-set-1.png" alt="MongoDB Replica Sets" />
+          <h2>Kubernetes StatefulSets with MongoDB: High Availability and Replica Sets</h2>
+        </a>
+        <p>
+          Learn how to deploy MongoDB on Kubernetes using a StatefulSet and a headless
+          Service to enable stable DNS names, persistent storage, and high availability with replica sets.
+          This guide covers setting up a MongoDB replica set with two members, configuring the StatefulSet and
+          Service manifests, and verifying the deployment to ensure data redundancy and resilience against pod failures.
+        </p>
+        <div class="post-meta">
+          <span>Kubernetes . MongoDB</span>
+          <span>Sep 28, 2025</span>
+        </div>
+      </div>
+
+      <div class="post-card">
+        <a href="kubernetes-service-accounts-and-tokens.html">
+          <img src="img/k8s_sa-1.png" width="80%" alt="MongoDB Replica Sets" />
+          <h2>Understanding Kubernetes Service Accounts, Tokens, and Cross-Namespace Access</h2>
+        </a>
+        <p>
+          Learn what are kubernetes service accounts and roles, why they matter, and how to use them to make
+          authenticated calls between workloads — including across namespaces. This guide covers creating service
+          accounts,
+          assigning roles, and using tokens for secure communication between pods in different namespaces.
+        </p>
+        <div class="post-meta">
+          <span>Kubernetes . Authentication</span>
+          <span>Nov 8, 2025</span>
+        </div>
+      </div>
+
+      <div class="post-card">
+        <a href="helm-charts-for-kubernetes-apps.html">
+          <div style="text-align: center;">
+            <img src="img/helm-1.png" width="50%" alt="Helm Charts" />
+          </div>
+          <h2>Helm Made Simple: Managing Kubernetes Apps with Charts</h2>
+        </a>
+        <p>
+          Learn how Helm simplifies Kubernetes application management by packaging your deployments, services,
+          and ingress configurations into reusable charts. This guide walks you through installing Helm on Ubuntu,
+          creating and customizing your own Helm chart for a User Management service, working with values overrides,
+          and finally packaging and sharing your chart for reuse across different environments.
+        </p>
+        <div class="post-meta">
+          <span>Helm . Kubernetes</span>
+          <span>Sep 28, 2025</span>
+        </div>
+      </div>
+
+      <div class="post-card">
+        <a href="mysql-to-snowflake-data-migration-airbyte.html">
+          <img src="img/img-01.jpg" alt="mysql-to-snowflake-data-migration-airbyte" />
+          <h2>Effortless Data Migration: Moving Data from MySQL to Snowflake using Airbyte</h2>
+        </a>
+        <p>This article explains how data can be moved from a MySQL database to Snowflake via Airbyte.</p>
+        <div class="post-meta">
+          <span>MySQL . Snowflake . Airbyte</span>
+          <span>Apr 14, 2024</span>
+        </div>
+      </div>
+
+      <div class="post-card">
+        <a href="dockerize-spring-boot-mysql-application.html">
+          <img src="img/docker-1.png" alt="dockerize-spring-boot-mysql-application" />
+          <h2>Dockerizing a Spring Boot application backed by a MySQL Database</h2>
+        </a>
+        <p>This article explains on how a Spring Boot application that is backed by a MySQL database can be dockerized.
+        </p>
+        <div class="post-meta">
+          <span>Docker . MySQL . Spring Boot</span>
+          <span>Jan 24, 2024</span>
+        </div>
+      </div>
+
+      <div class="post-card">
+        <a href="deploy-spring-boot-jenkins.html">
+          <img src="img/jenkins-1.png" alt="deploy-spring-boot-jenkins" />
+          <h2>Using Jenkins for CI/CD of a Spring Boot application</h2>
+        </a>
+        <p>This article explains on how a Spring Boot application can be deployed using Jenkins.</p>
+        <div class="post-meta">
+          <span>Jenkins . Docker . Spring Boot</span>
+          <span>Sep 11, 2024</span>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <footer>
+    Design: Simply by <a href="https://www.linkedin.com/in/ilman-iqbal-096308172" target="_blank" rel="nofollow">Ilman
+      Iqbal</a>
+  </footer>
+</body>
+
+</html>

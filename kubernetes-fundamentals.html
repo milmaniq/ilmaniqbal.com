@@ -1,0 +1,1174 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description"
+    content="Comprehensive Kubernetes guide: learn Pods, Deployments, Services, Port Forwarding, Ingress, Config Maps and Secrets with hands-on examples." />
+  <meta name="keywords"
+    content="Kubernetes, K8s, Pods, Deployments, Services, Ingress, NodePort, External IP, ExternalName, Port Forwarding, Namespaces, Contexts, Clusters, K3d, Ingress Controller, StatefulSet, Headless Service, MongoDB, Replica Set, ConfigMaps, Secrets, File Mounts, Environment Variables, Manifests, Docker, Container, Containerd, Kubernetes tutorial, Kubernetes guide" />
+  <meta name="author" content="Ilman Iqbal" />
+  <title>Kubernetes Made Simple: A Hands-On Guide to Pods, Deployments, Services, Port Forwarding, Ingress, Config Maps
+    and Secrets</title>
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Article",
+      "headline": "Kubernetes Made Simple: A Hands-On Guide to Pods, Deployments, Services, Port Forwarding, Ingress, Config Maps and Secrets",
+      "author": {
+          "@type": "Person",
+          "name": "Ilman Iqbal",
+          "url": "https://www.linkedin.com/in/ilman-iqbal-096308172"
+      },
+      "publisher": {
+          "@type": "Organization",
+          "name": "Ilman Iqbal",
+          "url": "https://ilmaniqbal.com",
+          "logo": {
+              "@type": "ImageObject",
+              "url": "https://ilmaniqbal.com/img/logo.png"
+          }
+      },
+      "datePublished": "2025-09-28",
+      "dateModified": "2025-09-28",
+      "image": "https://ilmaniqbal.com/img/k8s-1.png",
+      "description": "Complete guide to Kubernetes covering Pods, Deployments, Services, Port Forwarding, Ingress, NodePorts, External IPs, ExternalName, ConfigMaps, Secrets, Namespaces, Contexts, Clusters, K3d, file mounts, environment variables, manifests, Docker, and container management.",
+      "articleBody": "This hands-on Kubernetes guide explains how to set up clusters, contexts, and namespaces, and deploy applications using Pods and Deployments.\n\nIt covers Services, including ClusterIP, NodePort, and headless Services.\n\nIngress routing is explained, showing how to expose multiple services under a single hostname, with paths like /runtime and /admin, along with TLS and port forwarding for external access.\n\nThe guide also details ConfigMaps and Secrets to manage environment variables and application configuration securely.\n\nAdditional topics include file mounts, container management with Docker or containerd, using K3d for local clusters, and best practices for manifests and deployment strategies in production-ready applications.",
+      "articleSection": [
+        "Kubernetes Basics",
+        "Clusters, Contexts, Namespaces",
+        "Pods and Deployments",
+        "Services and Headless Services",
+        "Ingress and NodePorts",
+        "Port Forwarding",
+        "ConfigMaps and Secrets"
+      ],
+      "inLanguage": "en",
+      "keywords": "Kubernetes, K8s, Pods, Deployments, Services, Ingress, NodePort, External IP, ExternalName, Port Forwarding, Namespaces, Contexts, Clusters, K3d, Ingress Controller, StatefulSet, Headless Service, MongoDB, Replica Set, ConfigMaps, Secrets, File Mounts, Environment Variables, Manifests, Docker, Container, Containerd, Kubernetes tutorial, Kubernetes guide",
+      "mainEntityOfPage": {
+        "@type": "WebPage",
+        "@id": "https://ilmaniqbal.com/kubernetes-fundamentals.html"
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro&display=swap" rel="stylesheet" />
+  <!-- https://fonts.google.com/ -->
+  <link href="css/bootstrap.min.css" rel="stylesheet">
+  <link href="css/blog.css" rel="stylesheet">
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-8PPCHX9PDV"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { dataLayer.push(arguments); }
+    gtag('js', new Date());
+
+    gtag('config', 'G-8PPCHX9PDV');
+  </script>
+</head>
+
+<body>
+  <div class="container">
+
+    <header class="site-header">
+      <a href="index.html" class="site-logo-wrapper" style="text-decoration: none; color: inherit;">
+        <div class="site-logo"><i class="fas fa-code fa-2x"></i></div>
+        <h1>Ilman Iqbal's Blog</h1>
+      </a>
+    </header>
+
+    <h2 class="tm-post-title">Kubernetes Made Simple: A Hands-On Guide to Pods, Deployments, Services, Port Forwarding,
+      Ingress, Config Maps
+      and Secrets</h2>
+    <p class="meta">Sep 28, 2025 posted by Ilman Iqbal</p>
+
+    <p>
+      Learn how to deploy a complete application stack on Kubernetes, from Pods, Deployments, and Services to
+      Config Maps and Secrets.
+      Discover how to expose apps externally via Ingress, manage traffic with port forwarding and external IPs, and
+      securely handle configurations with ConfigMaps and Secrets—all in a practical, hands-on way.
+    </p>
+
+    <img id="half-width" src="img/k8s-1.png" alt="mysql-to-snowflake-data-migration-airbyte" />
+
+    <h3>What is Kubernetes?</h3>
+    <p>Kubernetes (K8s) is a container orchestrator. It runs and manages containers for you and helps with:</p>
+    <ul>
+      <li>Deployments &amp; rollouts (deploy new versions safely)</li>
+      <li>Scaling (add/remove replicas)</li>
+      <li>Load balancing traffic to containers</li>
+      <li>Health monitoring (restart unhealthy containers)</li>
+      <li>Configuration management (ConfigMap) and secret management (Secret)</li>
+    </ul>
+
+    <h3>The Core Architecture (in simple terms)</h3>
+    <table>
+      <tr>
+        <th>Component</th>
+        <th>What it does</th>
+      </tr>
+      <tr>
+        <td>Control Plane</td>
+        <td>The brain (API server, scheduler, controllers)</td>
+      </tr>
+      <tr>
+        <td>Worker Nodes</td>
+        <td>Where Pods (containers) actually run</td>
+      </tr>
+      <tr>
+        <td>etcd</td>
+        <td>Cluster state store (configs, secrets, cluster metadata)</td>
+      </tr>
+      <tr>
+        <td>Kubelet &amp; container runtime</td>
+        <td>Local node agent + runtime (containerd, Docker)</td>
+      </tr>
+    </table>
+
+    <h3>Using kubectl — the essential commands</h3>
+    <p>kubectl is your remote control for Kubernetes. Use it to inspect, modify, and debug the cluster.</p>
+
+    <h4>kubectl get — list resources</h4>
+    <pre><code>kubectl get pods
+kubectl get deployments
+kubectl get services
+kubectl get namespaces</code></pre>
+
+    <h4>kubectl describe — show detailed information about a resource</h4>
+    <pre><code>kubectl describe pod my-pod</code></pre>
+
+    <h4>kubectl logs — print the logs from a container in a pod</h4>
+    <pre><code>kubectl logs my-pod</code></pre>
+
+    <h4>kubectl exec — execute a command on a container in a pod (interactive)</h4>
+    <pre><code>kubectl exec -it my-pod -- /bin/sh</code></pre>
+
+    <div class="tip">
+      Tip: you can often find Pod names with <code>kubectl get pods -n &lt;namespace&gt;</code>, then use that exact
+      name in <code>kubectl exec</code> or
+      <code>kubectl logs</code>.
+    </div>
+
+    <h3>Contexts</h3>
+    <p>Context controls which cluster and user your <code>kubectl</code> talks to. Always check your context before
+      applying manifests in production clusters.</p>
+    <pre><code>kubectl config current-context
+kubectl config get-contexts</code></pre>
+
+    <h3>Namespaces</h3>
+    <p>Namespaces are logical project-level divisions inside a cluster (like folders).</p>
+    <pre><code>kubectl get namespaces</code></pre>
+
+    <p>Typical default list:</p>
+    <pre><code>NAME              STATUS   AGE
+default           Active   14m
+kube-node-lease   Active   14m
+kube-public       Active   14m
+kube-system       Active   14m</code></pre>
+
+    <table>
+      <tr>
+        <th>Namespace</th>
+        <th>Purpose</th>
+      </tr>
+      <tr>
+        <td>default</td>
+        <td>Where resources go if no namespace specified</td>
+      </tr>
+      <tr>
+        <td>kube-system</td>
+        <td>Kubernetes system services (DNS, metrics)</td>
+      </tr>
+      <tr>
+        <td>kube-public</td>
+        <td>Generally empty; readable by all</td>
+      </tr>
+      <tr>
+        <td>kube-node-lease</td>
+        <td>Used for node heartbeats</td>
+      </tr>
+    </table>
+
+    <pre><code>kubectl create namespace curity</code></pre>
+
+    <h3>Local clusters: Minikube, MicroK8s, K3s / k3d</h3>
+    <p>For learning and local development you can run Kubernetes in several ways:</p>
+    <ul>
+      <li>Minikube — single-node cluster in a VM or Docker.</li>
+      <li>MicroK8s — lightweight single-node K8s from Canonical. Uses microk8s kubectl.</li>
+      <li>K3s — lightweight Kubernetes distribution, often used by k3d.</li>
+      <li>k3d — runs K3s inside Docker containers (great for CI and local multi-cluster testing).</li>
+    </ul>
+
+    <div class="note">
+      MicroK8s note: MicroK8s bundles its own <code>kubectl</code>. To be sure you’re talking to the MicroK8s cluster,
+      prepend
+      <code>microk8s</code> (for example: <code>microk8s kubectl get namespaces</code>). This avoids accidentally using
+      a different kubeconfig/context on your machine.
+    </div>
+
+    <h4>Example: create a cluster with k3d</h4>
+    <pre><code>k3d cluster create curity-local</code></pre>
+
+    <h4>Check contexts</h4>
+    <pre><code>kubectl config get-contexts</code></pre>
+
+    <p>Example output:</p>
+    <pre><code>CURRENT   NAME                        CLUSTER                     AUTHINFO
+*         k3d-curity-local            k3d-curity-local            admin@k3d-curity-local
+          k3d-user-management-local   k3d-user-management-local   admin@k3d-user-management-local</code></pre>
+
+    <h4>Switch contexts with:</h4>
+    <pre><code>kubectl config use-context k3d-user-management-local</code></pre>
+
+    <h4>Check nodes &amp; runtime</h4>
+    <pre><code>kubectl get nodes -o wide</code></pre>
+    <p>This shows node OS, kernel, and container runtime (e.g. <code>containerd://1.x</code>).</p>
+
+    <div class="tip">
+      Tip: running <code>kubectl get nodes -o wide</code> shows node details including the container runtime. If you see
+      entries like
+      <code>K3s</code> and <code>containerd</code> this often means a lightweight k3s/k3d cluster running on WSL2 or
+      Docker.
+    </div>
+    <h3>Deployments &amp; Services — basics and YAML tips</h3>
+    <p>
+      Important: In YAML you can put multiple resource objects in one file separated by three dashes ---.
+      Example: a Deployment and a Service in a single manifest. You can also create separate files
+      (e.g., deployment.yaml and service.yaml).
+    </p>
+
+    <h4>Why create a Deployment?</h4>
+    <p>
+      A Deployment provides a higher-level management layer for Pods. It ensures your application is resilient,
+      scalable, and easy to update. Key benefits include:
+    </p>
+    <ul>
+      <li><strong>Ephemeral Pods:</strong> If a Pod dies, it’s gone. A Deployment automatically recreates Pods to
+        maintain the desired state (self-healing).</li>
+      <li><strong>Scaling:</strong> You can declaratively set <code>replicas</code> and Kubernetes will spin up that
+        many Pods and balance traffic across them via the Service.</li>
+      <li><strong>Declarative updates (Rolling Deployments):</strong> You can change container images, resource limits,
+        or environment variables. The Deployment gradually replaces old Pods with new ones without downtime.</li>
+      <li><strong>Rollback:</strong> Kubernetes keeps track of Deployment revisions. If something goes wrong, you can
+        easily roll back to a previous version.</li>
+      <li><strong>Consistency:</strong> Every Pod created by the Deployment has the same spec (labels, containers, env
+        vars). This ensures predictable behavior across replicas.</li>
+      <li><strong>Portability:</strong> You describe your app once in YAML, and Kubernetes makes sure it runs the same
+        way in dev, test, and production clusters.</li>
+    </ul>
+    <p>
+      In short: a Deployment gives you <em>self-healing</em>, <em>scaling</em>, <em>rolling updates</em>, and
+      <em>rollbacks</em> — making it the standard for running apps in Kubernetes.
+    </p>
+
+
+    <h4>User-management Deployment example</h4>
+    <pre><code>apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-management-app               # Unique name of the Deployment
+  namespace: user-management-app          # Namespace to logically isolate this app from others
+spec:
+  replicas: 2                             # Number of Pod replicas to maintain
+  selector:
+    matchLabels:
+      app: user-management-app            # The Deployment will manage only Pods that have this label
+  template:
+    metadata:
+      labels:
+        app: user-management-app          # This label is added to every Pod created by the Deployment.
+                                          # It MUST match the selector above, otherwise the Deployment
+                                          # won’t recognize its own Pods.
+    spec:
+      containers:
+      - name: user-management-app         # Container name inside each Pod
+        image: user-management:latest # Docker image used by the container
+        imagePullPolicy: IfNotPresent     # Pull image only if not present locally
+        ports:
+        - containerPort: 8082             # Port that the container listens on inside the Pod
+          name: http                      # Named port — allows Services to refer to it by name instead of port number
+        env:
+        - name: EXTERNAL_BACKEND_URL
+          value: "http://external-backend-svc:8088"
+          # Pod will call this Service instead of raw Windows IP
+
+</code></pre>
+
+    <h4>Why create a Service?</h4>
+    <p>A Kubernetes Service gives your Pod(s) a stable DNS name and a ClusterIP. Without a Service, pods get ephemeral
+      IPs so other services can't reliably reach them. Example in-cluster URL:</p>
+    <pre><code>http://user-management-svc.user-management-app.svc.cluster.local:8082</code></pre>
+
+    <h4>User-management Service example</h4>
+    <pre><code>apiVersion: v1
+kind: Service
+metadata:
+  name: user-management-svc         # Unique name of the Service
+  namespace: user-management-app    # Namespace to logically isolate this app from others
+spec:
+  selector:
+    app: user-management-app        # Matches Pods with label app=user-management-app
+  ports:
+    - protocol: TCP
+      port: 8082                    # The port exposed inside the cluster (cluster-wide virtual IP)
+      targetPort: http              # Forwards to the Pod's containerPort named "http" (8082 above)
+  type: ClusterIP                   # Default type; exposes service on an internal cluster IP
+</code></pre>
+
+
+    <h4>Applying the Deployment and Service</h4>
+    <p>
+      You can apply these manifests using <code>kubectl apply</code>. Since the resources specify a namespace,
+      you can either rely on that or explicitly specify it during apply:
+    </p>
+    <pre><code># Apply using the namespace in the manifest
+kubectl apply -f user-management-deployment.yaml
+kubectl apply -f user-management-service.yaml
+
+# Or explicitly specify the namespace
+kubectl apply -f user-management-deployment.yaml -n user-management-app
+kubectl apply -f user-management-service.yaml -n user-management-app
+</code></pre>
+
+    <h4>Deleting the Deployment or Service</h4>
+    <pre><code># Delete Deployment
+kubectl delete deployment user-management-app -n user-management-app
+
+# Delete Service
+kubectl delete svc user-management-svc -n user-management-app
+</code></pre>
+
+    <h4>Restarting the Deployment</h4>
+    <p>
+      To restart all Pods in a Deployment (for example, to pick up a new image or configuration):
+    </p>
+    <pre><code>kubectl rollout restart deployment user-management-app -n user-management-app
+
+# Check rollout status
+kubectl rollout status deployment user-management-app -n user-management-app
+</code></pre>
+
+
+    <h4>Scaling the Deployment</h4>
+    <pre><code>kubectl scale deployments/user-management-app --replicas=4
+</code></pre>
+    <p>
+      This command scales the Deployment to 4 replicas (Pods). The associated Service will automatically load-balance
+      requests across all replicas.
+    </p>
+
+    <h3>Types of Kubernetes Services</h3>
+    <ul>
+      <li><strong>ClusterIP (default):</strong> Exposes the Service on an internal IP in the cluster.
+        This makes the Service reachable only from within the cluster.
+        <br />👉 Used for: Internal microservice-to-microservice communication.
+      </li>
+      <li><strong>NodePort:</strong> Exposes the Service on each Node’s IP at a static port (between 30000–32767).
+        <br />👉 Used for: Simple external access to a Service, mainly for dev/test environments.
+      </li>
+      <li><strong>LoadBalancer:</strong> Exposes the Service externally using a cloud provider’s load balancer.
+        <br />👉 Used for: Production environments in cloud (AWS ELB, GCP LB, Azure LB).
+      </li>
+      <li><strong>ExternalName:</strong> Maps a Service to an external DNS name (e.g., a legacy system or DB).
+        <br />👉 Used for: Accessing external services as if they were inside the cluster.
+      </li>
+    </ul>
+    <h3>Working with NodePorts</h3>
+    <p>Create a Service that exposes the Deployment named <code>user-management-app</code>:</p>
+    <pre><code>kubectl expose deployment/user-management-app --type="NodePort" --port 8082 --name=user-management-svc-nodeport -n user-management-app
+</code></pre>
+
+    <p>
+      This command creates a Service of type <code>NodePort</code> to expose the <code>user-management-app</code>
+      Deployment. The name of this service is <code>user-management-svc-nodeport</code>.
+      Kubernetes assigns a port on each Node (in the range <code>30000–32767</code>), and forwards traffic to port 8082
+      in the Pods.
+    </p>
+
+    <pre><code>kubectl get svc user-management-svc-nodeport -n user-management-app
+# Example output:
+# NAME                         TYPE       CLUSTER-IP     EXTERNAL-IP   PORT(S)          AGE
+# user-management-svc-nodeport NodePort   10.43.56.235   none          8082:31776/TCP   6m
+# The "31776" is the NodePort assigned by Kubernetes.
+</code></pre>
+
+    <p>
+      To access your application from outside the cluster:
+    <ul>
+      <li>Use the <strong>Node IP</strong> of your Kubernetes node plus the NodePort.</li>
+      <li>Example: check the node IP using <code>kubectl get nodes -o wide</code>:
+        <pre><code>kubectl get nodes -o wide
+# Example output:
+NAME                                 STATUS   ROLES                  AGE   VERSION        INTERNAL-IP   EXTERNAL-IP   OS-IMAGE           KERNEL-VERSION                     CONTAINER-RUNTIME
+k3d-user-management-local-server-0   Ready    control-plane,master   16d   v1.31.5+k3s1   172.19.0.4    <none>        K3s v1.31.5+k3s1   6.6.87.2-microsoft-standard-WSL2   containerd://1.7.23-k3s2
+</code></pre>
+      </li>
+      <li>In WSL2, the node's INTERNAL-IP (<code>172.19.0.4</code>) is inside Docker network and usually not reachable
+        from Windows.</li>
+      <li>Instead, use the WSL2 host IP (from <code>hostname -I</code>), e.g., <code>172.26.41.222</code>:
+        <pre><code>hostname -I
+# Example output:
+172.26.41.222 172.119.0.1
+</code></pre>
+      </li>
+    </ul>
+    Example URL from Windows or outside the WSL2 VM:
+    <code>http://172.26.41.222:31776</code>
+    </p>
+
+
+    <p>
+      ⚡ Alternative approach using <code>kubectl port-forward</code>:
+      You can directly port-forward to the <strong>ClusterIP Service</strong> instead of using NodePort.
+
+    <h4>Why Port Forwarding?</h4>
+    <p>A <code>ClusterIP</code> service is accessible only inside the cluster. Your laptop/localhost is outside. Use
+      port-forwarding to create a temporary tunnel for local testing.</p>
+    <pre><code>kubectl port-forward svc/user-management-svc 8082:8082 -n user-management-app</code></pre>
+
+    <p>Now test at <code>http://localhost:8082</code>
+      <br>
+      This forwards traffic from your local host directly to the ClusterIP service inside the cluster.
+      This avoids NodePort networking issues and directly forwards traffic from your host to the Service.
+    </p>
+
+    <div class="note">
+      <strong>svc/&nbsp;vs&nbsp;deploy/ port-forward:</strong>
+      <ul>
+        <li><strong>svc/&nbsp;port-forward</strong> (service-level) forwards traffic to the Service's targets; it
+          follows the Service selector and will load-balance between pods matching the selector.</li>
+        <li><strong>deploy/&nbsp;port-forward</strong> (deployment/pod-level) forwards directly to a Pod selected by the
+          Deployment (kubectl resolves to a single pod behind the deployment). Use it when you want to debug a specific
+          pod instance.</li>
+      </ul>
+    </div>
+
+    <h3>Working with Ingress</h3>
+    <p>
+      Ingress allows you to expose multiple services under the same host or domain using HTTP(S) routes.
+      This is useful when you want to route traffic to multiple applications inside the same cluster without exposing
+      each Service individually.
+    </p>
+    <p>
+      In this example, we have installed Curity in the <code>curity</code> namespace. The runtime and admin pods are
+      running, and we want to make these services accessible from outside the cluster (e.g., from other clusters or your
+      host machine).
+    </p>
+
+    <h4>Example Ingress YAML</h4>
+    <pre><code>apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: curity-ingress
+  namespace: curity
+  annotations:
+    kubernetes.io/ingress.class: traefik      # Tells Kubernetes which ingress controller should handle this Ingress
+spec:
+  ingressClassName: traefik                   # Also specifies the ingress controller
+  rules:
+  - host: curity.local                        # The hostname to access services
+    http:
+      paths:
+      - path: /runtime                        # Route traffic with /runtime prefix
+        pathType: Prefix
+        backend:
+          service:
+            name: idsvr-tutorial-runtime-svc  # Service to route traffic to
+            port:
+              number: 8443
+      - path: /admin                          # Route traffic with /admin prefix
+        pathType: Prefix
+        backend:
+          service:
+            name: idsvr-tutorial-admin-svc    # Service to route traffic to
+            port:
+              number: 6749
+</code></pre>
+
+    <p>
+      To apply the Ingress, ensure you use the correct namespace:
+    <pre><code>kubectl apply -f curity-ingress.yaml -n curity</code></pre>
+    </p>
+
+    <h4>
+      Accessing your services via Ingress
+    </h4>
+    <ul>
+      <li>In WSL2, the Linux VM has its own network namespace. Your cluster’s Node IP (e.g., <code>172.19.0.4</code>) is
+        usually internal to Docker/k3d and not directly reachable from Windows.</li>
+      <li>The WSL2 host IP (from <code>hostname -I</code>, e.g., <code>172.26.41.222</code>) is reachable from your
+        Windows host. Adding this IP with the hostname <code>curity.local</code> in the hosts file allows your browser
+        to resolve the domain correctly:
+        <ul>
+          <li>In Windows, edit <code>C:\Windows\System32\drivers\etc\hosts</code> (admin rights) and add:
+            <pre><code>172.26.41.222  curity.local</code></pre>
+          </li>
+          <li>In WSL/Linux apps (optional), you can add the same line to <code>/etc/hosts</code> if testing from inside
+            WSL.</li>
+        </ul>
+      </li>
+      <li>Once the host resolves, you can access the services in your browser. The Ingress controller (Traefik) will
+        route traffic to the correct service inside the cluster:
+        <ul>
+          <li>Runtime service: <code>https://curity.local/runtime</code></li>
+          <li>Admin service: <code>https://curity.local/admin</code></li>
+        </ul>
+      </li>
+      <li>⚡ Tip: If you encounter HTTPS certificate warnings, accept the self-signed certificate for testing purposes.
+      </li>
+    </ul>
+
+
+    <h4>Accessing from inside the same cluster</h4>
+    <p>
+      From a Pod inside the same cluster, you don’t need to go through the Ingress hostname unless you want to test the
+      exact external route. The most common and efficient way to access services inside the cluster is via the Service
+      DNS.
+    </p>
+    <p>
+      <strong>What is Service DNS?</strong><br />
+      Kubernetes automatically gives every Service a DNS name in the form
+      <code>&lt;service-name&gt;.&lt;namespace&gt;.svc.cluster.local</code>.
+      <br /><br />
+      To check the services in the <code>curity</code> namespace:
+    <pre><code>kubectl get svc -n curity
+# Example output:
+NAME                         TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                                        AGE
+idsvr-tutorial-admin-svc     ClusterIP   10.43.209.141   &lt;none&gt;        6789/TCP,6790/TCP,4465/TCP,4466/TCP,6749/TCP   2d22h
+idsvr-tutorial-runtime-svc   ClusterIP   10.43.66.149    &lt;none&gt;        8443/TCP,4465/TCP,4466/TCP                     2d22h
+</code></pre>
+    You can reach these services using:
+    <ul>
+      <li>Admin Service: <code>http://idsvr-tutorial-admin-svc.curity.svc.cluster.local:6789</code></li>
+      <li>Runtime Service: <code>http://idsvr-tutorial-runtime-svc.curity.svc.cluster.local:8443</code></li>
+    </ul>
+    This is the most common and efficient way to access services inside the cluster.
+    </li>
+    </p>
+
+
+    <h4>Checking the Ingress Controller</h4>
+    <p>You need to know which Ingress controller is installed (Traefik, Nginx, etc.) so your
+      <code>ingressClassName</code> matches it.
+    </p>
+
+    <p>
+    <pre><code>kubectl get ingressclass
+# Example output:
+NAME      CONTROLLER                      PARAMETERS   AGE
+traefik   traefik.io/ingress-controller   none         16d
+</code></pre>
+    </p>
+
+    <p>
+      You can also describe the IngressClass to see which controller handles a given class:
+    <pre><code>kubectl describe ingressclass traefik</code></pre>
+    </p>
+    <h4>Key points</h4>
+    <ul>
+      <li>Both the Ingress and the target Services must be in the correct namespace (<code>curity</code> in this case).
+      </li>
+      <li>Ingress supports TLS termination, authentication, and other routing features.</li>
+      <li>Using Ingress, you can make multiple services in one namespace accessible via a single host or domain, which
+        is cleaner than exposing each Service with a NodePort.</li>
+    </ul>
+
+    <h4>Example use case:</h4>
+    <ul>
+      <li>You have installed Curity runtime and admin pods in the <code>curity</code> namespace.</li>
+      <li>Other clusters or your Windows host need to access these services without exposing NodePorts.</li>
+      <li>You create an Ingress resource that maps <code>/runtime</code> and <code>/admin</code> paths to the correct
+        Services. Now clients can access:
+        <ul>
+          <li>Runtime: <code>https://curity.local/runtime</code></li>
+          <li>Admin: <code>https://curity.local/admin</code></li>
+        </ul>
+      </li>
+    </ul>
+
+    <h3>Setting Up a Local k3d Cluster and NGINX Ingress</h3>
+    <p>
+      In the previous section, you learned how to expose services using the Traefik Ingress Controller.
+      Here, let’s explore the same concept using the <strong>NGINX Ingress Controller</strong> and a new demo
+      application.
+    </p>
+
+    <h4>Create a new k3d cluster</h4>
+    <pre><code>k3d cluster create demo-test \
+  --api-port 6551 \
+  -p "80:80@loadbalancer" \
+  -p "443:443@loadbalancer" \
+  --k3s-arg "--disable=traefik@server:0"
+</code></pre>
+
+    <p><strong>Notes:</strong></p>
+    <ul>
+      <li>
+        <strong><code>--api-port 6551</code></strong> exposes the Kubernetes API server on port <code>6551</code> of
+        your local
+        machine. This allows <code>kubectl</code> and other Kubernetes clients on your host to communicate with the
+        cluster.
+      </li>
+      <li>
+        <strong><code>--k3s-arg "--disable=traefik@server:0"</code></strong> disables the default Traefik Ingress
+        Controller that comes
+        preinstalled with k3s. This ensures there’s no conflict when you later install the NGINX Ingress Controller
+        manually.
+      </li>
+    </ul>
+
+    <p>Check that the cluster is running:</p>
+    <pre><code>kubectl get nodes</code></pre>
+
+    <h4>Install the NGINX Ingress Controller</h4>
+    <pre><code>sudo apt install -y helm
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+helm install nginx-ingress ingress-nginx/ingress-nginx \
+  --namespace demo-nginx-ingress \
+  --create-namespace \
+  --set controller.publishService.enabled=true
+</code></pre>
+
+    <p><strong>Explanation:</strong></p>
+    <ul>
+      <li>
+        <strong><code>helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx</code></strong><br />
+        - <code>ingress-nginx</code> is the <em>Helm repository name</em> you assign locally.
+        - <code>https://kubernetes.github.io/ingress-nginx</code> is the <em>official Helm chart repository URL</em> for
+        the NGINX Ingress Controller maintained by the Kubernetes community.
+        - This command tells Helm where to find and download the NGINX Ingress Controller chart.
+      </li>
+
+      <li>
+        <strong><code>helm install nginx-ingress ingress-nginx/ingress-nginx</code></strong><br />
+        - <code>nginx-ingress</code> is the <em>release name</em> — a name you choose to identify this installation of
+        the chart within your cluster.
+        - <code>ingress-nginx/ingress-nginx</code> refers to the <em>chart path</em>:
+        <ul>
+          <li>The first <code>ingress-nginx</code> refers to the repository you added earlier.</li>
+          <li>The second <code>ingress-nginx</code> is the actual chart name inside that repository.</li>
+        </ul>
+        - Together, this means: “Install the <code>ingress-nginx</code> chart from the <code>ingress-nginx</code> repo,
+        and call this deployment <code>nginx-ingress</code>.”
+      </li>
+
+      <li>
+        <strong><code>--namespace demo-nginx-ingress</code></strong> — Creates and deploys into a dedicated namespace
+        for the ingress controller.
+      </li>
+      <li>
+        <strong><code>--set controller.publishService.enabled=true</code></strong> — Ensures NGINX advertises its
+        external IP through a Service, so external clients can route traffic correctly.
+      </li>
+    </ul>
+
+
+    <h4>Deploy a sample application to test routing</h4>
+    <p>Save the following as <code>demo-app-deployment.yaml</code>:</p>
+
+    <pre><code>apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-app
+  namespace: demo-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-app
+  template:
+    metadata:
+      labels:
+        app: demo-app
+    spec:
+      containers:
+      - name: demo-app
+        image: hashicorp/http-echo
+        args:
+          - "-text=Hello from NGINX Ingress!"
+        ports:
+          - containerPort: 5678
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-app
+  namespace: demo-app
+spec:
+  selector:
+    app: demo-app
+  ports:
+    - port: 80
+      targetPort: 5678
+</code></pre>
+
+    <p>Apply the manifest:</p>
+    <pre><code>kubectl apply -f demo-app-deployment.yaml</code></pre>
+
+    <h4>Create an Ingress rule for the sample app</h4>
+    <p>Save the following as <code>demo-ingress.yaml</code>:</p>
+
+    <pre><code>apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-ingress
+  namespace: demo-app
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: demo.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: demo-app
+            port:
+              number: 80
+</code></pre>
+
+    <p>Apply the ingress:</p>
+    <pre><code>kubectl apply -f demo-ingress.yaml
+</code></pre>
+
+    <h4>Edit your hosts file</h4>
+    <p>To make <code>demo.local</code> resolvable:</p>
+    <ul>
+      <li><strong>Inside WSL/Linux:</strong>
+        <pre><code>sudo nano /etc/hosts
+# Add the following line:
+127.0.0.1 demo.local
+</code></pre>
+      </li>
+      <li><strong>In Windows:</strong>
+        <pre><code>C:\Windows\System32\drivers\etc\hosts
+# Add the following line:
+127.0.0.1 demo.local
+</code></pre>
+      </li>
+    </ul>
+
+    <h4>Test routing</h4>
+    <ul>
+      <li>From WSL:
+        <pre><code>curl http://demo.local
+# Output:
+Hello from NGINX Ingress!
+</code></pre>
+      </li>
+      <li>From a Windows browser:
+        <p>Visit <code>http://demo.local</code> after adding the hosts entry.</p>
+      </li>
+    </ul>
+
+    <h4>Understanding the hosts file</h4>
+    <p>
+      The hosts file is a local DNS override file that maps domain names to IP addresses before your system queries any
+      DNS server.
+    </p>
+    <p><strong>What happens when you add it:</strong></p>
+    <ol>
+      <li>You type <code>http://demo.local</code> in your browser.</li>
+      <li>Windows checks the hosts file first.</li>
+      <li>It finds <code>demo.local</code> → <code>127.0.0.1</code>.</li>
+      <li>The HTTP request is sent to <code>127.0.0.1</code> (your local machine).</li>
+      <li>Flow: <code>Browser → 127.0.0.1:80 → k3d LoadBalancer → NGINX Ingress → demo-app</code></li>
+    </ol>
+
+
+    <h3>Service → External IP (Service + Endpoints)</h3>
+    <p>
+      Sometimes Pods inside your cluster need to communicate with a service running <strong>outside the cluster</strong>
+      (e.g., a legacy backend, a database on your host machine, or another service not containerized).
+      Kubernetes doesn’t automatically route <code>localhost</code> from inside Pods to your Windows host — especially
+      when
+      running under WSL2 or k3d. Instead, you can use a Service + Endpoints pair to bridge traffic.
+    </p>
+
+    <p>
+      In this scenario, our <code>curity-runtime</code> Pod listens on port <code>8439</code>.
+      It needs to call a backend service (ex: internal-scim) running on the Windows host at port <code>8088</code>.
+      We expose that Windows service inside Kubernetes with a <strong>Service + Endpoints</strong> pair,
+      so Pods can call it like any other internal Service.
+    </p>
+
+    <pre><code># external-backend.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: external-backend-svc
+  namespace: curity
+spec:
+  type: ClusterIP             # Default: makes the Service reachable only inside the cluster
+  ports:
+    - name: backend-api
+      port: 8088              # A port exposed external-backend-svc service inside the cluster (The Pods must connect to this port)
+      targetPort: 8088        # Forwards to this port on the backing endpoints. Must match the Endpoints port below
+    - name: backend-db
+      port: 27017
+      targetPort: 27017
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: external-backend-svc  # Must match the Service name exactly
+  namespace: curity
+subsets:
+  - addresses:
+      - ip: 172.26.41.222     # External service IP (your Windows host IP from `hostname -I`)
+    ports:
+      - name: backend-api     # Must match Service.spec.ports[].name above
+        port: 8088            # Port on the external host that provides the API
+      - name: backend-db
+        port: 27017
+</code></pre>
+
+    <p><strong>Namespace matters:</strong></p>
+    <ul>
+      <li>Both the <code>Service</code> and <code>Endpoints</code> must be in the same namespace (e.g.,
+        <code>curity</code>).
+      </li>
+      <li>When applying YAML files, always use the correct namespace:
+        <pre><code>kubectl apply -f external-backend.yaml -n curity</code></pre>
+      </li>
+      <li>If no namespace is given, Kubernetes will default to the <code>default</code> namespace and your Pods in
+        <code>curity</code> may not find the service.
+      </li>
+    </ul>
+
+    <p><strong>Verify configuration:</strong></p>
+    <pre><code>kubectl get svc external-backend-svc -n curity -o wide
+kubectl get endpoints external-backend-svc -n curity -o yaml
+</code></pre>
+
+    <p><strong>Testing the setup:</strong></p>
+    <pre><code># Exec into the user-management Pod
+kubectl exec -it deploy/user-management-app -n curity -- sh
+
+# Inside the Pod, test the external backend call:
+curl http://external-backend-svc:8088
+</code></pre>
+
+    <p>
+      If the setup is correct, this <code>curl</code> will hit the Windows service running at
+      <code>172.26.41.222:8088</code>, but from the Pod’s perspective, it looks like a normal Kubernetes Service.
+    </p>
+
+    <h4>How this works:</h4>
+    <ul>
+      <li>The <code>Service</code> defines logical ports inside the cluster (8088, 27017). Pods in your cluster
+        can call:
+        <ul>
+          <li><b>Within same namespace:</b> <code>http://external-backend-svc:8088</code></li>
+          <li><b>From another namespace:</b> <code>http://external-backend-svc.curity.svc.cluster.local:8088</code></li>
+        </ul>
+      </li>
+      <li>The <code>Endpoints</code> object maps those logical ports to an external IP address
+        (in this case, <code>172.26.41.222</code>, your WSL2 host IP). This tells Kubernetes where to actually send
+        traffic.</li>
+      <li>Kubernetes proxies requests:
+        <code>Pod (8082 → outbound request) → Service (ClusterIP 8088) → Endpoints → External host IP (172.26.41.222:8088)</code>.
+      </li>
+    </ul>
+
+    <h4>Why is this needed?</h4>
+    <ul>
+      <li>Inside WSL2, the Linux VM has its own network namespace. Your cluster’s Node IP (e.g.,
+        <code>172.19.0.4</code>) is usually internal to Docker/k3d and not directly reachable from Windows.
+      </li>
+      <li>The WSL2 host IP (from <code>hostname -I</code>, e.g., <code>172.26.41.222</code>) is reachable from Windows
+        and should be used in the Endpoints object.</li>
+      <li>Inside WSL2/k3d, Pods cannot reach Windows directly with <code>127.0.0.1</code> or <code>localhost</code>,
+        because
+        <code>localhost</code> inside the container refers to the container itself.
+      </li>
+      <li>By creating a Service + Endpoints pair, you give Pods a stable DNS name inside the cluster
+        while actually routing traffic outside to Windows or another machine.</li>
+      <li>When Pods talk to the internet (like calling <code>https://api.github.com</code>),
+        they <em>don’t need</em> this — cluster networking and NAT already handle external routing.
+        This trick is only for routing to services bound to your host machine or private network IPs.</li>
+    </ul>
+
+    <h4>Example use case:</h4>
+    <ul>
+      <li>You’re running a MongoDB instance on Windows bound to <code>localhost:27017</code>.</li>
+      <li>Your Pod in WSL2 needs to connect to that DB.</li>
+      <li>You expose it in Kubernetes as <code>external-backend-svc</code> and the Pod just connects to
+        <code>mongodb://external-backend-svc:27017</code>.
+      </li>
+    </ul>
+
+    <p>⚡ Tip: On Windows + WSL2, get the reachable host IP with:</p>
+    <pre><code>hostname -I   # e.g., 172.26.41.222
+</code></pre>
+    <p>
+      Add that IP in your Endpoints object. If it changes (like after a reboot), you’ll need to update the Endpoints.
+      For a more permanent solution, you can run a reverse proxy inside the cluster or use
+      <code>host.docker.internal</code>. But, this is supported only in Docker Desktop (Windows/Mac) and not supported
+      in Docker on Linux, k3d, WSL2 + k3d.
+    </p>
+
+    <h4>Key Difference - Deployment-backed Service vs External Service</h4>
+    <p>
+      Normally, a Kubernetes <code>Service</code> selects Pods using <code>spec.selector</code>. The
+      <code>targetPort</code> maps to the container port inside those Pods.
+    </p>
+    <p>
+      In the case of an <strong>external Service</strong> (using a <code>Service + Endpoints</code> pair), there are no
+      Pods.
+      Instead, you manually create an <code>Endpoints</code> object with an IP address and ports.
+    </p>
+    <p>
+      The <code>Service</code> simply forwards requests to whatever you define in the <code>Endpoints</code> object.
+      Here, <code>targetPort</code> must match the port numbers you defined in the Endpoints.
+    </p>
+    <p>So the traffic flow is:</p>
+    <ul>
+      <li><strong>Deployment-backed Service:</strong> <code>Service.port → Service.targetPort → Pod.containerPort</code>
+      </li>
+      <li><strong>External Service:</strong> <code>Service.port → Service.targetPort → Endpoints.port</code></li>
+    </ul>
+
+
+    <h3>ConfigMaps — store non-sensitive configuration</h3>
+    <p>ConfigMaps keep configuration separate from images. Two common usage patterns are: mount as files, or inject as
+      environment variables.</p>
+
+    <h4>Create a ConfigMap</h4>
+    <pre><code># app-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: user-management-app
+data:
+  APP_MODE: "production"
+  APP_VERSION: "1.0.0"
+  LOG_LEVEL: "debug"</code></pre>
+
+    <h4>Scenario A — ConfigMap as environment variables</h4>
+    <pre><code># deployment-configmap-env.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: configmap-env-deployment
+  namespace: user-management-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: configmap-env
+  template:
+    metadata:
+      labels:
+        app: configmap-env
+    spec:
+      containers:
+      - name: demo-container
+        image: busybox
+        command: ["sh","-c","env; sleep 3600"]
+        envFrom:
+        - configMapRef:
+            name: app-config</code></pre>
+
+    <p><strong>Apply &amp; verify:</strong></p>
+    <pre><code>kubectl apply -f app-configmap.yaml
+kubectl apply -f deployment-configmap-env.yaml
+kubectl get pods -n user-management-app
+kubectl exec -it &lt;pod-name&gt; -n user-management-app -- env | grep APP_MODE</code></pre>
+
+    <div class="note">
+      Environment variables are injected at pod start. If you update the ConfigMap, running pods won’t automatically see
+      new env values — you must restart or rollout the Deployment
+      (<code>kubectl rollout restart deployment/&lt;name&gt; -n &lt;ns&gt;</code>).
+    </div>
+
+    <h4>Scenario B — ConfigMap mounted as files</h4>
+    <pre><code># deployment-configmap-file.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: configmap-file-deployment
+  namespace: user-management-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: configmap-file
+  template:
+    metadata:
+      labels:
+        app: configmap-file
+    spec:
+      containers:
+      - name: demo-container
+        image: busybox
+        command: ["sh","-c","cat /config/APP_MODE; sleep 3600"]
+        volumeMounts:
+        - name: config-volume
+          mountPath: /config
+      volumes:
+      - name: config-volume
+        configMap:
+          name: app-config</code></pre>
+
+    <p><strong>Apply &amp; verify:</strong></p>
+    <pre><code>kubectl apply -f app-configmap.yaml
+kubectl apply -f deployment-configmap-file.yaml
+kubectl exec -it &lt;pod-name&gt; -n user-management-app -- cat /config/APP_MODE</code></pre>
+
+    <div class="note">
+      When a ConfigMap is mounted as files, kubelet updates the files automatically when the ConfigMap changes. Your
+      application must re-read the file (or watch for changes) to pick up new values.
+    </div>
+
+    <h3>Secrets — store sensitive data (with caution)</h3>
+    <p>Secrets store sensitive strings (passwords, keys). They are base64-encoded when stored in YAML but are not
+      encrypted in etcd unless you enable encryption at rest.</p>
+
+    <h4>Create a Secret</h4>
+    <pre><code>echo -n 'user' | base64   # output: dXNlcg==
+echo -n 'password' | base64   # output: cGFzc3dvcmQ=
+
+# app-secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secret
+  namespace: user-management-app
+type: Opaque
+data:
+  DB_USER: dXNlcg==
+  DB_PASSWORD: cGFzc3dvcmQ=</code></pre>
+
+    <h4>Scenario A — Secret as environment variables</h4>
+    <pre><code># deployment-secret-env.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: secret-env-deployment
+  namespace: user-management-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: secret-env
+  template:
+    metadata:
+      labels:
+        app: secret-env
+    spec:
+      containers:
+      - name: demo-container
+        image: busybox
+        command: ["sh","-c","env; sleep 3600"]
+        envFrom:
+        - secretRef:
+            name: app-secret</code></pre>
+
+    <p><strong>Apply &amp; verify:</strong></p>
+    <pre><code>kubectl apply -f app-secret.yaml
+kubectl apply -f deployment-secret-env.yaml
+kubectl exec -it &lt;pod-name&gt; -n user-management-app -- printenv | grep DB_</code></pre>
+
+    <div class="note">
+      Like ConfigMap envs, secret values injected as environment variables are set at pod start and do not update
+      automatically on secret change — restart the pods or rollout.
+    </div>
+
+    <h4>Scenario B — Secret mounted as files</h4>
+    <pre><code># deployment-secret-file.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: secret-file-deployment
+  namespace: user-management-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: secret-file
+  template:
+    metadata:
+      labels:
+        app: secret-file
+    spec:
+      containers:
+      - name: demo-container
+        image: busybox
+        command: ["sh","-c","cat /secrets/DB_USER; cat /secrets/DB_PASSWORD; sleep 3600"]
+        volumeMounts:
+        - name: secret-volume
+          mountPath: /secrets
+      volumes:
+      - name: secret-volume
+        secret:
+          secretName: app-secret</code></pre>
+
+    <p><strong>Apply &amp; verify:</strong></p>
+    <pre><code>kubectl apply -f app-secret.yaml
+kubectl apply -f deployment-secret-file.yaml
+kubectl exec -it &lt;pod-name&gt; -n user-management-app -- ls /secrets
+kubectl exec -it &lt;pod-name&gt; -n user-management-app -- cat /secrets/DB_USER</code></pre>
+
+    <div class="note">
+      Secret files are updated on disk when the Secret changes, but applications must re-read the file or be restarted
+      if they cache secrets on startup.
+    </div>
+
+    <h3>Quick verification checklist (copy &amp; paste)</h3>
+    <pre><code># Create namespaces
+kubectl create namespace curity
+kubectl create namespace user-management-app
+
+# Apply configmap & secret (example)
+kubectl apply -f app-configmap.yaml
+kubectl apply -f app-secret.yaml
+
+# Deploy example workloads
+kubectl apply -f deployment-configmap-env.yaml
+kubectl apply -f deployment-configmap-file.yaml
+kubectl apply -f deployment-secret-env.yaml
+kubectl apply -f deployment-secret-file.yaml
+
+# User management app
+kubectl apply -f user-management-deployment.yaml -n user-management-app
+
+# Check pods
+kubectl get pods -n curity
+kubectl get pods -n user-management-app
+
+# Verify ConfigMap via env
+kubectl exec -it &lt;pod-name&gt; -n curity -- env | grep APP_MODE
+
+# Verify ConfigMap via file
+kubectl exec -it &lt;pod-name&gt; -n curity -- cat /config/APP_MODE
+
+# Verify Secret via env
+kubectl exec -it &lt;pod-name&gt; -n curity -- printenv | grep DB_PASSWORD
+
+# Verify Secret via file
+kubectl exec -it &lt;pod-name&gt; -n curity -- cat /secrets/DB_PASSWORD
+
+# Verify service -> external endpoints
+kubectl get svc scim-service -n curity -o yaml
+kubectl get endpoints scim-service -n curity -o yaml</code></pre>
+
+    <h3>Final notes &amp; recommendations</h3>
+    <ul>
+      <li>Always check your current context: <code>kubectl config current-context</code> before applying manifests.</li>
+      <li>For production, enable encryption at rest for secrets in etcd and use an external secret store (HashiCorp
+        Vault, AWS KMS, etc.).</li>
+      <li>Prefer mounting config files if the app can re-read them; use env vars when configuration is simple or
+        immutable at pod start.</li>
+      <li>For local development, port-forwarding is convenient; for staging/production, prefer NodePort/LoadBalancer or
+        Ingress controllers.</li>
+    </ul>
+
+</body>
+
+</html>

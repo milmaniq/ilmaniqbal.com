@@ -1,0 +1,1132 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Go Concurrency, Authentication, and Authorization Notes - Part 1</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link href="css/bootstrap.min.css" rel="stylesheet">
+  <link href="css/blog.css" rel="stylesheet">
+</head>
+
+<body>
+  <div class="container">
+    <header class="site-header">
+      <a href="index.html" class="site-logo-wrapper" style="text-decoration: none; color: inherit;">
+        <div class="site-logo"><i class="fas fa-code fa-2x"></i></div>
+        <h1>Ilman Iqbal's Blog</h1>
+      </a>
+    </header>
+
+    <h3 class="tm-post-title">Go Concurrency, Authentication, and Authorization Notes - Part 1</h3>
+
+    <section>
+      <h3>Holding Locks During Long Operations</h3>
+      <p class="problem">❌ Problem</p>
+      <p>syncTenants() is called while holding a mutex lock — if it takes long, Stop() will block waiting for the lock.
+      </p>
+      <pre>
+func (w *TenantSyncWorker) Start() {
+    w.mu.Lock()
+    defer w.mu.Unlock()
+
+    if w.running {
+        return
+    }
+
+    // ❌ Long-running call inside lock
+    w.syncTenants()
+
+    w.running = true
+}
+</pre>
+      <p>Why it’s bad: Locks should protect short critical sections only — not long network or DB calls.</p>
+
+      <p class="fix">✅ Fix</p>
+      <pre>
+func (w *TenantSyncWorker) Start() {
+    w.mu.Lock()
+    if w.running {
+        w.mu.Unlock()
+        return
+    }
+    w.running = true
+    w.mu.Unlock()
+
+    // ✅ Run outside the lock
+    w.syncTenants()
+}
+</pre>
+    </section>
+
+    <section>
+      <h3>Race Condition with ticker Capture</h3>
+      <p class="problem">❌ Problem</p>
+      <p>Capturing w.ticker to a local variable doesn’t prevent races if another goroutine sets w.ticker = nil.</p>
+      <pre>
+ticker := w.ticker // ❌ doesn't fix race
+
+go func() {
+    for {
+        select {
+        case &lt;-ticker.C:
+            w.syncTenants()
+        case &lt;-w.done:
+            return
+        }
+    }
+}()
+</pre>
+      <p>Why it’s bad: w.ticker can change concurrently (e.g., Stop() sets it to nil). The local variable doesn’t
+        provide thread safety.</p>
+
+      <p class="fix">✅ Fix</p>
+      <pre>
+go func() {
+    for {
+        select {
+        case &lt;-w.ticker.C:
+            w.syncTenants()
+        case &lt;-w.done:
+            return
+        }
+    }
+}()
+</pre>
+    </section>
+
+    <section>
+      <h3>No Goroutine Lifecycle Management</h3>
+      <p class="problem">❌ Problem</p>
+      <p>The goroutine runs indefinitely; there’s no way to track or wait for it.</p>
+      <pre>
+func (w *TenantSyncWorker) Start() {
+    go func() {
+        for {
+            select {
+            case &lt;-w.ticker.C:
+                w.syncTenants()
+            case &lt;-w.done:
+                return
+            }
+        }
+    }()
+}
+</pre>
+      <p>Why it’s bad: Goroutines might outlive the app. Stop() doesn’t ensure it has exited. Can cause DB or HTTP
+        connection leaks.</p>
+
+      <p class="fix">✅ Fix</p>
+      <pre>
+type TenantSyncWorker struct {
+    ctx    context.Context
+    cancel context.CancelFunc
+    wg     sync.WaitGroup
+}
+
+func (w *TenantSyncWorker) Start() {
+    w.ctx, w.cancel = context.WithCancel(context.Background())
+    w.wg.Add(1)
+
+    go func() {
+        defer w.wg.Done()
+        for {
+            select {
+            case &lt;-w.ticker.C:
+                w.syncTenants(w.ctx)
+            case &lt;-w.ctx.Done():
+                return
+            }
+        }
+    }()
+}
+
+func (w *TenantSyncWorker) Stop() {
+    if w.cancel != nil {
+        w.cancel()
+    }
+    w.wg.Wait() // ✅ Wait for worker to finish
+}
+</pre>
+    </section>
+
+    <section>
+      <h3>Using context.Background() Instead of Caller Context</h3>
+      <p class="problem">❌ Problem</p>
+      <pre>
+func (w *TenantSyncWorker) syncTenants() {
+    ctx := context.Background() // ❌ ignores shutdown signals
+    tenants, _ := w.accessStudioClient.GetTenants(ctx)
+}
+</pre>
+      <p>Why it’s bad: Worker doesn’t stop even after Stop() is called. Cancels and timeouts from parent context are
+        ignored. Tracing / request IDs lost.</p>
+
+      <p class="fix">✅ Fix</p>
+      <pre>
+func (w *TenantSyncWorker) syncTenants(ctx context.Context) {
+    tenants, err := w.accessStudioClient.GetTenants(ctx)
+    if err != nil {
+        return
+    }
+    // process tenants
+}
+
+// call with:
+w.syncTenants(w.ctx)
+</pre>
+    </section>
+
+    <section>
+      <h3>No Concurrency Control in Tenant Loop</h3>
+      <p class="problem">❌ Problem</p>
+      <pre>
+for _, tenant := range tenants {
+    go func(t Tenant) {
+        _ = w.commandService.ApplyTenantFromAS(ctx, t)
+    }(tenant)
+}
+</pre>
+      <p>Why it’s bad: If there are 500 tenants, 500 goroutines will start simultaneously — possibly exhausting DB
+        connections or CPU.</p>
+
+      <p class="fix">✅ Fix</p>
+      <pre>
+sem := make(chan struct{}, 10) // ✅ max 10 concurrent workers
+var wg sync.WaitGroup
+
+for _, tenant := range tenants {
+    sem &lt;- struct{}{}
+    wg.Add(1)
+
+    go func(t Tenant) {
+        defer wg.Done()
+        defer func() { &lt;-sem }()
+
+        if err := w.commandService.ApplyTenantFromAS(ctx, t); err != nil {
+            w.logger.Error().Msgf("Failed: %v", err)
+        }
+    }(tenant)
+}
+
+wg.Wait()
+</pre>
+    </section>
+
+    <section>
+      <h3>Slice Preallocation</h3>
+      <p class="problem">❌ Problem</p>
+      <pre>
+func convertAdminUsers(adminUsers []AdminUserFromAS) []domain.AdminUser {
+    var domainUsers []domain.AdminUser
+    for _, u := range adminUsers {
+        domainUsers = append(domainUsers, convert(u))
+    }
+    return domainUsers
+}
+</pre>
+      <p>Why it’s bad: Appending to a nil slice without capacity causes multiple reallocations when len(adminUsers) is
+        large. Each reallocation copies the slice contents → unnecessary CPU and memory churn.</p>
+
+      <p class="fix">✅ Fix</p>
+      <pre>
+func convertAdminUsers(adminUsers []AdminUserFromAS) []domain.AdminUser {
+    domainUsers := make([]domain.AdminUser, 0, len(adminUsers)) // ✅ preallocate
+
+    for _, u := range adminUsers {
+        domainUsers = append(domainUsers, convert(u))
+    }
+    return domainUsers
+}
+</pre>
+      <p>Rule of Thumb: Whenever you know or can estimate final slice size, use make([]T, 0, n).</p>
+    </section>
+
+    <h3>Improper Logging and Missing Domain Events (in deactivateUser)</h3>
+    <p class="problem">❌ Problem</p>
+    <p>The function <code>deactivateUser</code> logs success but does not log failures. It also uses misleading log
+      fields (email vs Username) and does not trigger a domain event for deactivation.</p>
+    <p class="problem">Why it’s bad</p>
+    <p>Without proper logging, failures can go unnoticed. Misleading log fields make debugging harder. Missing domain
+      events means other parts of the system are not notified of state changes.</p>
+    <p class="fix">✅ Fix</p>
+    <pre>
+func (s *CommandService) deactivateUser(ctx context.Context, repo core.Repository, userAgg *user.Aggregate) error {
+    if _, err := userAgg.Deactivate(s.clock.NowUTC()); err != nil {
+        s.logger.Error().
+            Str("user_id", string(userAgg.Id())).
+            Msgf("Failed to deactivate user: %v", err)
+        return err
+    }
+
+    if err := repo.Save(ctx, userAgg); err != nil {
+        s.logger.Error().
+            Str("user_id", string(userAgg.Id())).
+            Msgf("Failed to save deactivated user: %v", err)
+        return err
+    }
+
+    // Trigger domain event
+    s.eventBus.Publish(domain.NewAdminUserDeactivatedEvent(userAgg.Id()))
+
+    s.logger.Info().
+        Str("user_id", string(userAgg.Id())).
+        Str("username", string(userAgg.State().Username)).
+        Msg("Successfully deactivated admin user")
+
+    return nil
+}
+</pre>
+
+    <h3>Unnecessary Save When Nothing Changed (in updateExistingUser)</h3>
+    <p class="problem">❌ Problem</p>
+    <p>The <code>updateExistingUser</code> function always calls <code>repo.Save</code>, even if the user state did not
+      change.</p>
+    <p class="problem">Why it’s bad</p>
+    <p>Saving without changes leads to redundant database writes, wasted I/O, and potentially triggers unnecessary
+      events.</p>
+    <p class="fix">✅ Fix</p>
+    <pre>
+func (s *CommandService) updateExistingUser(ctx context.Context, repo core.Repository, userAgg *user.Aggregate, adminUser AdminUserFromAS) error {
+    changed := false
+
+    if adminUser.Active && !userAgg.State().Active {
+        if _, err := userAgg.Activate(s.clock.NowUTC()); err != nil {
+            return err
+        }
+        changed = true
+    } else if !adminUser.Active && userAgg.State().Active {
+        if _, err := userAgg.Deactivate(s.clock.NowUTC()); err != nil {
+            return err
+        }
+        changed = true
+    }
+
+    if !changed {
+        return nil
+    }
+
+    return repo.Save(ctx, userAgg)
+}
+</pre>
+
+    <h3>Wrong Responsibility (in TenantExists)</h3>
+    <p class="problem">❌ Problem</p>
+    <p>The <code>TenantExists</code> function in CommandService queries state instead of performing mutations.</p>
+    <p class="problem">Why it’s bad</p>
+    <p>This violates CQRS principles. Commands should mutate state, not perform queries.</p>
+    <p class="fix">✅ Fix</p>
+    <pre>
+// In repository or query service
+func (r *TenantRepository) Exists(ctx context.Context, tenantID common.TenantId) (bool, error) {
+    // query DB directly
+}
+</pre>
+
+    <h3>Passing Structs by Value vs by Pointer</h3>
+    <p class="problem">❌ Review Concern</p>
+    <p>Passing <code>TenantFromAS</code> by value could seem inefficient for large structs.</p>
+    <p class="problem">Why it’s bad</p>
+    <p>Premature optimization can increase cognitive load. For small structs, passing by value is efficient and safer.
+    </p>
+    <p class="fix">✅ Best practice</p>
+    <pre>
+func (s *CommandService) ApplyTenantFromAS(ctx context.Context, asTenant TenantFromAS) error
+// Correct: small, immutable structs can be passed by value.
+</pre>
+
+    <h3>Error Handling When Loading Tenant</h3>
+    <p class="problem">❌ Problem</p>
+    <p>Treating all errors from <code>repo.Load</code> as "tenant not found".</p>
+    <p class="problem">Why it’s bad</p>
+    <p>Network or DB errors can be misinterpreted, potentially creating duplicates or corrupt data.</p>
+    <p class="fix">✅ Fix</p>
+    <pre>
+err := repo.Load(ctx, core.Id(asTenant.TenantID), &tenant)
+if err != nil {
+    if errors.Is(err, core.ErrNotFound) {
+        isNewTenant = true
+    } else {
+        return fmt.Errorf("failed to load tenant %s: %w", asTenant.TenantID, err)
+    }
+}
+</pre>
+
+    <h3>Anti-Corruption Layer Enforcement</h3>
+    <p class="problem">❌ Problem</p>
+    <p>Domain layer depends on external DTOs (<code>TenantFromAS</code>) directly.</p>
+    <p class="problem">Why it’s bad</p>
+    <p>Mixing integration types with domain violates separation of concerns and risks domain layer corruption.</p>
+    <p class="fix">✅ Fix</p>
+    <pre>
+domainTenant := convertFromAS(asTenant)
+tenant.UpdateFromAS(domainTenant)
+</pre>
+
+    <h3>Ignoring Return Values and Unwrapped Errors</h3>
+    <p class="problem">❌ Problem</p>
+    <p>Returned events and validation errors from <code>tenant.UpdateFromAS</code> are ignored or returned raw.</p>
+    <p class="problem">Why it’s bad</p>
+    <p>Hides operation context and discards domain events.</p>
+    <p class="fix">✅ Fix</p>
+    <pre>
+if events, err := tenant.UpdateFromAS(...); err != nil {
+    return fmt.Errorf("tenant update failed for %s: %w", asTenant.TenantID, err)
+} else {
+    s.eventBus.Publish(events...)
+}
+</pre>
+
+    <h3>Tenant Method Accepting Its Own ID</h3>
+    <p class="problem">❌ Problem</p>
+    <p>Passing tenant ID into a method of the tenant aggregate itself.</p>
+    <p class="problem">Why it’s bad</p>
+    <p>Aggregate already knows its ID; passing it back indicates design smell.</p>
+    <p class="fix">✅ Fix</p>
+    <pre>
+eventPack, err := tenant.CreateIDP(clientId, clientSecret, wellKnownUrl, name, ...)
+</pre>
+
+    <h3>External Service Calls Inside Database Transaction</h3>
+    <p class="problem">❌ Problem</p>
+    <p>Calling external services inside DB transaction.</p>
+    <p class="problem">Why it’s bad</p>
+    <p>External calls can stall transactions. Rollback after success leads to inconsistent state.</p>
+    <p class="fix">✅ Fix</p>
+    <pre>
+err := s.ts.Run(ctx, func(ctx context.Context, repo core.Repository) error {
+    return repo.Save(ctx, &tenant)
+})
+if err != nil {
+    return err
+}
+
+// After commit
+if err := s.updateAccessStudioTokenProfile(ctx, tenant.Id(), ...); err != nil {
+    s.logger.Error().Msgf("AS update failed for tenant %s", tenant.Id())
+}
+</pre>
+
+    <h3>Reconciliation Logic Inside Transaction</h3>
+    <p class="problem">❌ Problem</p>
+    <p>Calling reconciliation inside transactional path.</p>
+    <p class="problem">Why it’s bad</p>
+    <p>Mixes write and sync logic, causing long transactions, duplicate runs, and tight coupling.</p>
+    <p class="fix">✅ Fix</p>
+    <pre>
+// Keep reconciliation async via background worker or outbox event
+</pre>
+
+    <h3>Post-Save Side Effects</h3>
+    <p class="problem">❌ Problem</p>
+    <p>Performing side effects after save, final <code>repo.Save</code> may fail.</p>
+    <p class="problem">Why it’s bad</p>
+    <p>Previously committed actions can succeed but DB rollback causes inconsistency.</p>
+    <p class="fix">✅ Fix</p>
+    <pre>
+// Save first, then trigger external side effects asynchronously
+</pre>
+
+    <h3>DAO Pointer Safety</h3>
+    <p class="problem">❌ Problem</p>
+    <p>DAO field is a pointer; if nil, method calls will panic.</p>
+    <p class="problem">Why it’s bad</p>
+    <p>Causes runtime panics, harder to debug initialization issues.</p>
+    <p class="fix">✅ Fix</p>
+    <pre>
+func NewQueryService(ts *core.TransactionScope, dao *mongo.Dao, ...) *QueryService {
+    if ts == nil { panic("TransactionScope cannot be nil") }
+    if dao == nil { panic("mongo.Dao cannot be nil") }
+    return &QueryService{ts: ts, dao: dao, ...}
+}
+</pre>
+
+    <h3>Inefficient User Lookup</h3>
+    <p class="problem">❌ Problem</p>
+    <p>Fetching all users for a tenant and filtering by email in memory.</p>
+    <p class="problem">Why it’s bad</p>
+    <p>O(n) lookup, high memory, high DB load, slow for large tenants.</p>
+    <p class="fix">✅ Fix</p>
+    <pre>
+func (s *QueryService) GetUserByEmail(ctx context.Context, tenantId common.TenantId, email string) (*user.Aggregate, error) {
+    userDoc, err := s.dao.GetUserByTenantAndEmail(ctx, tenantId, email)
+    if err != nil { return nil, fmt.Errorf("failed to get user: %w", err) }
+    return userDoc, nil
+}
+</pre>
+
+    <h3>Full In-Memory Load</h3>
+    <p class="problem">❌ Problem</p>
+    <p>Loading all users into memory with <code>cursor.All</code>.</p>
+    <p class="problem">Why it’s bad</p>
+    <p>Memory blow-up, long DB connection hold, high latency, resource contention.</p>
+    <p class="fix">✅ Fix</p>
+    <pre>
+// Option 1: Stream through cursor
+func (s *Dao) StreamUsersByTenant(ctx context.Context, tenantID common.TenantId, handle func(...)) error { ... }
+// Option 2: Pagination
+func (s *Dao) GetUsersByTenantPage(ctx, tenantID, page, pageSize) { ... }
+// Option 3: Use projection for needed fields only
+</pre>
+
+    <h3>Other Tips</h3>
+    <p class="problem">❌ Problem</p>
+    <p>Using <code>time.Sleep</code> or sync primitives without context awareness.</p>
+    <p class="problem">Why it’s bad</p>
+    <p>Cannot react to cancellation, blocks responsiveness, risk of leaks.</p>
+    <p class="fix">✅ Fix</p>
+    <pre>
+// Use Ticker and context.Done for responsive loops
+// Use conc.WaitGroup for safer goroutine management
+// Use fx.Shutdowner to gracefully shutdown Fx applications
+</pre>
+
+    <!-- Begin appended content -->
+    <section>
+      <h3>Git Commits</h3>
+      <p><strong>Branch Naming:</strong></p>
+      <ul>
+        <li>feature/ – for new features</li>
+        <li>topic/ - for exploratory work</li>
+        <li>improvement/ – for improvements</li>
+        <li>bugfix/ – for bug fixes</li>
+        <li>refactor/ – for non-functional internal code improvements</li>
+      </ul>
+
+      <p><strong>Commit Types:</strong></p>
+      <ul>
+        <li>feat – For new features</li>
+        <li>fix – For bug fixes</li>
+        <li>docs – For documentation changes only</li>
+        <li>style – For formatting only (no code changes)</li>
+        <li>refactor – For code refactoring that doesn’t fix a bug or add a feature</li>
+        <li>perf – For performance improvements</li>
+        <li>test – For adding or updating tests</li>
+        <li>chore – For changes to build process, CI config, or non-functional tasks</li>
+        <li>revert – For reverting a previous commit</li>
+      </ul>
+    </section>
+
+    <section>
+      <h3>Idempotent Operations</h3>
+      <p>
+        <em>Definition:</em> Calling it multiple times gives the same result.
+      </p>
+      <p>
+        Example: If an endpoint updates a field (<code>active</code>) in an existing resource (<code>user</code>), use
+        <code>PUT</code>.
+        <br>It is idempotent — calling it multiple times doesn’t change the result.
+      </p>
+    </section>
+
+    <section>
+      <h3>HTTP Redirect Codes</h3>
+      <ul>
+        <li>
+          <strong>302 Found:</strong> This status code indicates that the requested resource is temporarily located at a
+          different URI. The key aspect of a 302 redirect, according to the HTTP specification, is that the client is
+          supposed to repeat the request to the new URI using the same HTTP method as the original request. For example,
+          if a POST request results in a 302, the browser should theoretically issue another POST request to the new
+          location. However, in practice, many browsers and clients historically treated 302s as if they were 303s,
+          changing the subsequent request method to GET, especially after a POST.
+        </li>
+        <li>
+          <strong>303 See Other:</strong> This status code explicitly instructs the client to retrieve the redirected
+          resource using a GET request, regardless of the original request's method. It is commonly used after a
+          successful POST, PUT, or DELETE operation where the server wants to redirect the client to a different
+          resource (e.g., a confirmation page or the newly created resource) to prevent resubmission issues and allow
+          for bookmarking of the result.
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h3>Docker & Kubernetes Deployment</h3>
+      <pre>
+docker build -t user-management-svc:latest .
+k3d image import user-management-svc:latest -c user-management-local
+kubectl rollout restart deployment/user-management-svc -n user-management-app
+        </pre>
+    </section>
+
+    <section>
+      <h3>Managed Identity (Azure)</h3>
+      <p>A Managed Identity is an Azure AD identity automatically managed by Azure. It removes the need for you to
+        manually create and rotate credentials.</p>
+      <ul>
+        <li><strong>System-assigned:</strong> An identity that’s tied to one resource (e.g., an AKS pod or VM). It’s
+          deleted automatically when the resource is deleted.</li>
+        <li><strong>User-assigned:</strong> A reusable identity created as a standalone resource. Multiple resources
+          (e.g., AKS pods, Functions, etc.) can share it.</li>
+      </ul>
+
+      <h3>Steps to Configure Managed Identity for AKS</h3>
+      <ol>
+        <li>
+          <strong>Enable Workload Identity:</strong>
+          <pre>
+az aks update \
+  --name &lt;aks-cluster-name&gt; \
+  --resource-group &lt;resource-group&gt; \
+  --enable-oidc-issuer \
+  --enable-workload-identity</pre>
+          <p>This sets up the OIDC issuer URL so pods can use federated tokens. A federated token is a Kubernetes
+            service account token that Azure AD accepts (through federation) to issue an Azure access token.</p>
+        </li>
+        <li>
+          <strong>Create User-Assigned Managed Identity:</strong>
+          <pre>
+az identity create \
+  --name my-app-identity \
+  --resource-group &lt;resource-group&gt;</pre>
+          <p>Then note the clientId and resourceId from the output.</p>
+        </li>
+        <li>
+          <strong>Give Key Vault Access to this identity:</strong>
+          <p>Get the vault name and identity client ID, then:</p>
+          <pre>
+az keyvault set-policy \
+  --name &lt;keyvault-name&gt; \
+  --secret-permissions get list \
+  --spn &lt;clientId-of-identity&gt;</pre>
+        </li>
+        <li>
+          <strong>Federate the Managed Identity with your AKS OIDC Issuer:</strong>
+          <p>Get your AKS OIDC issuer URL:</p>
+          <pre>
+az aks show \
+  --name <your-aks-cluster-name> \
+  --resource-group <your-resource-group> \
+  --query "oidcIssuerProfile.issuerUrl" \
+  -o tsv</pre>
+          <p>Then create a federated credential for your app’s service account:</p>
+          <pre>
+az identity federated-credential create \
+  --name my-app-federation \
+  --identity-name my-app-identity \
+  --resource-group &lt;resource-group&gt; \
+  --issuer &lt;aks-oidc-issuer-url&gt; \
+  --subject system:serviceaccount:&lt;namespace&gt;:&lt;serviceaccount-name&gt;</pre>
+          <p>By creating a federated credential, it means, If a pod running in namespace <namespace> with service
+              account <serviceaccount-name> presents a token from that OIDC issuer, Azure will issue an access token for
+                the Managed Identity <code>my-app-identity</code></p>
+        </li>
+        <li>
+          <strong>Annotate Kubernetes Service Account:</strong>
+          <p>Your app’s service account needs to link to the Managed Identity:</p>
+          <pre>
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: my-app-sa
+  namespace: default
+  annotations:
+    azure.workload.identity/client-id: "&lt;clientId-of-managed-identity&gt;"</pre>
+          <p>Then in your Deployment:</p>
+          <pre>
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+spec:
+  template:
+    spec:
+      serviceAccountName: my-app-sa
+      containers:
+        - name: my-app
+          image: myregistry.azurecr.io/my-app:latest</pre>
+        </li>
+        <li>
+          <strong>Use Azure SDK in your App (Go example):</strong>
+          <p>Your app code can now authenticate using the DefaultAzureCredential (which automatically uses the workload
+            identity):</p>
+          <pre>
+import (
+    "context"
+    "fmt"
+    "github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+    "github.com/Azure/azure-sdk-for-go/sdk/keyvault/azsecrets"
+)
+
+func main() {
+    cred, err := azidentity.NewDefaultAzureCredential(nil)
+    if err != nil {
+        panic(err)
+    }
+
+    client, err := azsecrets.NewClient("https://&lt;keyvault-name&gt;.vault.azure.net/", cred, nil)
+    if err != nil {
+        panic(err)
+    }
+
+    secret, err := client.GetSecret(context.Background(), "my-secret", nil)
+    if err != nil {
+        panic(err)
+    }
+
+    fmt.Println("Secret value:", *secret.Value)
+}</pre>
+          <p class="note">Note: <code>cred, _ := azidentity.NewDefaultAzureCredential(nil)</code>
+            Here’s what happens internally:
+            The Azure SDK reads the service account token (the federated token) from the pod filesystem.
+            It sends it to Azure AD with a “token exchange” request.
+            Azure AD checks:
+            Is the token signed by a trusted issuer?
+            Does the “sub” match any configured federated credential?
+            If yes, Azure AD returns an Azure Access Token — representing the Managed Identity (my-app-identity).
+            Now your pod can call any Azure resource as if it were that managed identity.</p>
+        </li>
+      </ol>
+    </section>
+
+    <section>
+      <h3>Curity Admin API Errors & Solutions</h3>
+      <ul>
+        <li>
+          <strong>DNS Lookup Failure:</strong>
+          <pre><code>error: failed to create IDP: ... no such host</code></pre>
+          <strong>Solution:</strong> Correct the service URL using:
+          <code>&lt;service&gt;.&lt;namespace&gt;.svc.cluster.local</code>
+        </li>
+        <li>
+          <strong>TLS Error:</strong>
+          <pre><code>malformed HTTP response "\x15\x03\x03\x00\x02\x02P"</code></pre>
+          <strong>Solution:</strong> Use <code>https://</code> for Curity Admin API.
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h3>Curity Profiles</h3>
+      <p>Curity divides functionality into:</p>
+      <ul>
+        <li><strong>Authentication Profile:</strong> Handles user authentication (authenticators, login, SSO sessions)
+        </li>
+        <li><strong>Token Profile:</strong> Issues tokens to clients (authorization_code flow, etc.)</li>
+      </ul>
+
+      <h3>Curity Session Types:</h3>
+      <ul>
+        <li>
+          <strong>SSO Persist Session:</strong> Saved in DB, cleared via <code>/oauth-session/logout</code> with
+          <code>id_token_hint</code> or idle session timeout.
+        </li>
+        <li>
+          <strong>Authentication Transaction / Rolling Session:</strong> Tracks OIDC flow steps (ex: where am I in the
+          OIDC flow), cleared naturally or via <code>/authentication-session/logout</code>.
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h3>Cookie Overwrite Problem &amp; Fix</h3>
+
+      <h4 class="problem">The Problem:</h4>
+      <p>
+        Curity tracks an interactive authentication transaction server-side and links it to the browser by a session
+        cookie (<code>sessionid</code> + <code>ssm</code>). When you start login with <code>lec-oidc</code> (customer
+        profile),
+        Curity creates a session (call it session A) and stores the OIDC state there.
+      </p>
+      <p>
+        In your flow <code>lec-oidc</code> delegates to <code>lec-token-profile → azure-oidc → Entra ID</code>. During
+        that delegation,
+        the lec-token-profile (or azure-oidc running under it) also performs top-level redirects and may itself write a
+        new
+        session cookie (call it session B) under the same cookie name and same domain.
+      </p>
+      <p>
+        Because both profiles are served from the same domain and the session cookies use that domain and a
+        non-restrictive path,
+        the browser accepts and stores the latest <code>Set-Cookie</code> value — which can overwrite the original
+        session cookie value
+        (session A → replaced by session B).
+      </p>
+      <p>
+        When the IdP redirects the browser back to customer callback with <code>code+state</code>, the browser sends the
+        current cookie
+        value (session B). Curity's customer profile then looks up session B server-side and finds either the wrong
+        session or
+        no authn transaction (or the state does not match). Result:
+        <code><strong>"Couldn't resume authentication transaction / missing_parameters".</strong></code>
+      </p>
+
+      <h4 class="fix">The Solution:</h4>
+      <ul>
+        <li>
+          <strong>Serve profiles on different hostnames (or subdomains)</strong>
+          <ul>
+            <li>
+              Put the <code>lec-token-profile</code> / <code>lec-authentication-profile</code> and the customer profile
+              on separate
+              hostnames (or subdomains). Example:
+              <ul>
+                <li><code>lec-token-profile → https://lec.rgn-eu.nxs-dev.ifscsc.cloud</code></li>
+                <li><code>customer profile → https://app.rgn-eu.nxs-dev.ifscsc.cloud</code></li>
+              </ul>
+            </li>
+            <li>
+              Because cookies are scoped per host, session cookies from <code>lec.example.com</code> will not overwrite
+              cookies on
+              <code>app.example.com</code>. This is the cleanest and safest fix.
+            </li>
+            <li>
+              Implementation: change the base URLs / virtual host mapping (ngrok endpoints / DNS) used for each profile
+              so they use
+              different hostnames.
+            </li>
+          </ul>
+        </li>
+      </ul>
+
+      <p class="note">
+        <strong>PS:</strong> If you serve the lec-token/lec-authentication profiles from
+        <code>lec.rgn-eu.nxs-dev.ifscsc.cloud</code> while the customer profile stays on
+        <code>rgn-eu.nxs-dev.ifscsc.cloud</code>, the browser will keep separate cookie namespaces for the two hosts and
+        the lec
+        profile will not overwrite the customer session cookie.
+      </p>
+
+      <h4>How to apply the fix:</h4>
+      <ol>
+        <li>
+          Pick distinct hostnames for the profiles. Example:
+          <ul>
+            <li><code>app.rgn-eu.nxs-dev.ifscsc.cloud</code> (customer-facing profile)</li>
+            <li><code>lec.rgn-eu.nxs-dev.ifscsc.cloud</code> (lec-token / IdP profile)</li>
+          </ul>
+        </li>
+
+        <li>
+          Find the address your DNS should point to (Ingress / Load Balancer). Determine how external traffic reaches
+          your cluster
+          (Ingress controller service). Run:
+          <pre><code>kubectl get svc -n kube-system
+kubectl get svc -n &lt;ingress-namespace&gt;</code></pre>
+          <p>Look for the Service that fronts Traefik/Nginx (type LoadBalancer) and note either:</p>
+          <ul>
+            <li><strong>EXTERNAL-IP</strong> (an IP)</li>
+            <li><strong>EXTERNAL-DNS NAME</strong> (an ELB/ALB DNS name)</li>
+          </ul>
+        </li>
+
+        <li>
+          Create DNS records in your provider:
+          <ul>
+            <li><code>EXTERNAL-IP 34.12.45.67 →</code> create <strong>A records</strong> pointing to that IP</li>
+            <li><code>EXTERNAL-DNS curity-alb-123456.us-east-1.elb.amazonaws.com →</code> create an
+              <strong>ALIAS (Route53)</strong> or <strong>CNAME</strong> pointing to that DNS name
+            </li>
+          </ul>
+        </li>
+
+        <li>Create/adjust Ingress YAML to accept both hostnames and route to your Curity service.</li>
+
+        <li>
+          Update Curity profile <code>base-urls</code> and client <code>redirect_uris</code> to the new hostnames.
+          <ul>
+            <li>
+              For the <strong>lec-token/lec-authentication</strong> profiles:
+              update <code>base-url</code> (if used in discovery) and client <code>redirect_uris</code> and
+              <code>configuration-urls</code> to use <code>lec.rgn-eu...</code>
+            </li>
+            <li>
+              For the <strong>customer profile (customer-test)</strong>:
+              update the <code>lec-oidc</code> authenticator <code>configuration-url</code> and any clients’
+              <code>redirect_uris</code> that point to the callback to use <code>app.rgn-eu...</code>
+            </li>
+          </ul>
+        </li>
+
+        <li>Test with browser and verify cookies are not overwritten.</li>
+      </ol>
+
+      <h4>Step-by-step flow (with cookie creation points)</h4>
+
+      <ol>
+        <li>
+          <strong>Step 1:</strong> Browser starts OIDC flow to customer-test-profile
+          <pre><code>GET https://curity.example.com/customer-test-profile/oauth-authorize?client_id=app-client&...</code></pre>
+          <p>
+            At this moment, the Token Profile delegates to the customer-test-profile (Authentication Profile). No
+            cookies exist yet.
+          </p>
+        </li>
+
+        <li>
+          <strong>Step 2:</strong> Enter customer-test-profile → lec-oidc
+          <p>
+            Curity starts a new authentication transaction in the customer-test-profile context.
+            Curity sends a <code>Set-Cookie</code> header to the browser.
+            This cookie allows Curity to resume this transaction when the browser comes back later.
+          </p>
+        </li>
+
+        <li>
+          <strong>Step 3:</strong> lec-oidc redirects browser to lec-token-profile.
+          <p>
+            The lec-oidc authenticator delegates login to another Curity token profile.
+            Redirect:
+            <code>302 Location: https://curity.example.com/lec-token-profile/oauth-authorize?client_id=tenant-123-client&...</code>
+          </p>
+          <p>
+            At this moment, the Token Profile delegates to the lec-authentication-profile.
+          </p>
+        </li>
+
+        <li>
+          <strong>Step 4:</strong> lec-authentication-profile → azure-oidc.
+          <p>
+            A new authentication transaction starts inside the lec-authentication-profile context — independent of the
+            previous one.
+            Curity sends another <code>Set-Cookie</code> header to the browser.
+            Now, the browser has two cookies — one for customer-test-profile, and one for lec-authentication-profile.
+          </p>
+        </li>
+
+        <li>
+          <strong>Step 5:</strong> azure-oidc → redirects to Entra ID.
+          <p>
+            Curity (acting as an OIDC client) redirects the browser to Entra ID:
+            <code>302 Location: https://login.microsoftonline.com/...&state=XYZ</code>
+          </p>
+        </li>
+
+        <li>
+          <strong>Step 6:</strong> Browser returns from Entra ID → lec-authentication-profile callback.
+          <p>
+            After successful login at Entra ID, the browser is redirected back to:
+            <code>https://curity.example.com/lec-authentication-profile/authn/azure-oidc/callback?code=...&state=XYZ</code>.
+          </p>
+          <p>
+            When the browser follows this redirect, it includes the lec-authentication-profile cookie automatically.
+            Curity uses it to resume this transaction and complete the azure-oidc login.
+          </p>
+        </li>
+
+        <li>
+          <strong>Step 7:</strong> lec-authentication-profile finishes, returns code to lec-oidc.
+          <p>
+            Curity redirects back to:
+            <code>302 Location: https://curity.example.com/customer-test-profile/authn/lec-oidc/callback?code=...&state=ABC</code>.
+          </p>
+          <p>
+            When the browser follows this redirect, it includes the customer-test-profile cookie automatically.
+            Curity uses it to resume the lec-oidc transaction and issue tokens to the app.
+          </p>
+        </li>
+      </ol>
+    </section>
+
+    <section>
+      <h3>Federation Concepts</h3>
+      <p><strong>Federation</strong> = One system trusting another system’s users or identities (tokens).</p>
+      <ul>
+        <li><strong>User Federation:</strong> Connect IdP to external datasource so that users can authenticate using
+          accounts that are managed outside your system.</li>
+        <li><strong>OIDC Federation:</strong> One OIDC provider trusts tokens from another. This is usually done by
+          setting the issuer URL of one IdP in the other IdP.</li>
+        <li><strong>Federated Token:</strong> A token issued by the trusted external system (AKS) that Azure AD will
+          accept because of OIDC federation.</li>
+        <li><strong>Federated Credential:</strong> It’s a rule that we configure in Azure AD in order to enable it to
+          accept federated tokens.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h3>IdP (Identity Provider)</h3>
+      <ul>
+        <li>An Identity Provider (IdP) is a system that authenticates users</li>
+        <li>An External IdP is an outside IdP that your system trusts to authenticate users instead of doing it itself.
+        </li>
+        <li>
+          <strong>In your setup:</strong>
+          <ul>
+            <li>Your Curity server is the main IdP for your apps.</li>
+            <li>But, Curity delegates login to Azure AD, which acts as the external IdP.</li>
+          </ul>
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h3>What is an OpenID Connect (OIDC) provider?</h3>
+      <ul>
+        <li>An OpenID Connect (OIDC) provider is a service that authenticates users and issues tokens</li>
+        <li>Examples: Curity, Azure AD (Entra ID), Google, Okta.</li>
+        <li>
+          <strong>In your setup:</strong> Customer profile, LEC profile or Azure AD acts as the OIDC provider.
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h3>What is an OIDC federation?</h3>
+      <ul>
+        <li>An OIDC federation is when multiple OpenID Connect (OIDC) providers (or realms/identity systems) are
+          connected or trusted together, so users from one system can authenticate in another.</li>
+        <li>
+          <strong>In your setup:</strong> Your customer profile acts as an OIDC provider. This OIDC
+          provider
+          delegates login to another OIDC provider — e.g., LEC profile or Entra ID (Azure AD). This setup
+          forms an OIDC federation, where customer profile acts as a relying party to another OIDC provider.
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h3>IdP vs OIDC</h3>
+      <ul>
+        <li>IdP authenticates users. It can use different protocols to do authenticaion, such as
+          <ul>
+            <li>OIDC (OpenID Connect)</li>
+            <li>SAML</li>
+          </ul>
+        </li>
+        <li>
+          <strong>In your setup:</strong>
+          <ul>
+            <li>Curity contains a tenant profile that issues tokens. Therefore, curity acts as an IdP. <br /> But Curity
+              is delegating authentication to another IdP — Azure AD (Entra ID) — through OIDC. Therefore, Azure AD is
+              an extrenal IdP.</li>
+            <li>Your app uses OIDC to talk to Curity (that’s how it gets tokens). <br /> Curity uses OIDC again, but
+              this time as a client to Azure AD (external IdP).
+            </li>
+          </ul>
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h3>OAuth 2.0 & OpenID</h3>
+      <ul>
+        <li>
+          <strong>How to Say You’re Using OAuth 2.0?</strong>
+          <ul>
+            <li>Your flow includes <code>/oauth/authorize</code> and <code>/oauth/token</code> endpoints.</li>
+            <li>You exchange an authorization code for an access token.</li>
+            <li>The purpose is to obtain a token to call APIs (authorization).</li>
+          </ul>
+        </li>
+        <li>
+          <strong>How to Say You’re Using OpenID Connect?</strong>
+          <ul>
+            <li>The <code>scope</code> parameter includes <code>openid</code>.</li>
+            <li>You receive an ID Token (usually a JWT with user claims).</li>
+            <li>You have an OIDC discovery document endpoint (<code>/.well-known/openid-configuration</code>).</li>
+            <li>You use authenticators or clients of type <code>oidc</code>.</li>
+            <li>The goal is user authentication (not just API access).</li>
+          </ul>
+        </li>
+        <li>OpenID Connect (OIDC) is built on top of OAuth 2.0 — it extends OAuth2.</li>
+        <li>
+          <strong>In your setup:</strong>
+          <ul>
+            <li>Between your application ↔ Curity: using OAuth 2.0 (authorization) — and OIDC if
+              <code>scope=openid</code> is included for login.
+            </li>
+            <li>Between Curity ↔ Azure AD: using OpenID Connect, which internally uses OAuth 2.0 flows.</li>
+          </ul>
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h3>Zero Trust Principle</h3>
+      <p><strong>Zero Trust</strong> means: “Never trust anything — always verify.”</p>
+      <p>According to the zero trust principle, every request must be:</p>
+      <ul>
+        <li><strong>Authenticated</strong> — who are you? (e.g., every request must contain tokens, certificates, or
+          use mTLS.)</li>
+        <li><strong>Authorized</strong> — do you have permission? (e.g., every request must include access control
+          checks.)</li>
+        <li><strong>Verified continuously</strong> — are you still who you claim to be, and is your device secure?
+          (e.g., tokens must be validated continuously.)</li>
+      </ul>
+    </section>
+
+    <section>
+      <h3>How to Verify the Access Token in Your Microservices</h3>
+      <ul>
+        <li>
+          If the token is a JWT, validate the signature using Curity’s JWKS endpoint:
+          <pre><code>GET https://&lt;curity-domain&gt;/tenant-token-profile/oauth/v2/oauth-anonymous/jwks</code></pre>
+        </li>
+        <li>
+          If the token is opaque, call Curity’s Introspection endpoint (<code>/introspect</code>) to check if it’s
+          active:
+          <pre><code>curl -u &lt;client_id&gt;:&lt;client_secret&gt; \
+  -d token=&lt;access_token&gt; \
+  https://&lt;curity-domain&gt;/&lt;profile-id&gt;/introspect</code></pre>
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h3>What is SSO?</h3>
+      <p><strong>SSO (Single Sign-On)</strong> is an authentication concept where a user logs in once and gains access
+        to multiple independent applications without re-entering credentials.</p>
+      <p>Example: A user logs into Curity via Client A (App A), and can then access Client B (App B) without logging
+        in again.</p>
+      <ul>
+        <li><strong>Log in to Application A (Client A):</strong>
+          <ul>
+            <li>You’re redirected to Curity.</li>
+            <li>Curity asks for your username/password (or federates to LDAP/AD/Google).</li>
+            <li>After login, Curity creates a session and issues tokens for Client A.</li>
+          </ul>
+        </li>
+        <li><strong>Go to Application B (Client B):</strong>
+          <ul>
+            <li>Application B redirects you to Curity for login.</li>
+            <li>Curity detects an active session and issues tokens automatically — no credentials needed again.</li>
+          </ul>
+        </li>
+        <li><strong>Do you need to log in again?</strong>
+          <ul>
+            <li><strong>No</strong> — if your Curity session is still active.</li>
+            <li><strong>Yes</strong> — if your session expired, or if App B uses a different authentication
+              profile/domain.</li>
+          </ul>
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h3>RBAC – Role-Based Access Control</h3>
+      <p>Access is based on roles assigned to users.</p>
+      <ul>
+        <li><strong>Example:</strong>
+          <ul>
+            <li>User: Alice</li>
+            <li>Role: Admin</li>
+            <li>Permissions: Create, Update, Delete users</li>
+            <li>✅ Alice can delete a user because her role allows it.</li>
+          </ul>
+        </li>
+        <li>Used in: Curity, Keycloak</li>
+      </ul>
+    </section>
+
+    <section>
+      <h3>ReBAC – Relationship-Based Access Control</h3>
+      <p>Access is based on relationships between entities (users, resources, groups, etc.), not just roles.</p>
+      <ul>
+        <li><strong>Example:</strong>
+          <ul>
+            <li>Alice owns Project A</li>
+            <li>Bob is a collaborator on Project A</li>
+            <li>Charlie is a manager of Alice</li>
+            <li>✅ Bob can edit Project A (because of "collaborator" relationship)</li>
+            <li>✅ Charlie can view Project A (because "manager of Alice")</li>
+            <li>❌ Others can’t access Project A</li>
+          </ul>
+        </li>
+        <li>Used in: SpiceDB, AuthZed</li>
+      </ul>
+    </section>
+
+</body>
+
+</html>

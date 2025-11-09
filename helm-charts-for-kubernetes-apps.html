@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description"
+        content="Learn how to use Helm to simplify Kubernetes deployments with charts, repositories, and templates. Deploy Curity Identity Server, a User Management service with MongoDB on Kubernetes (k3d) using Helm." />
+    <meta name="keywords"
+        content="Helm, Kubernetes, Helm Charts, Curity Identity Server, k3d, MongoDB, Spring Boot, User Management, Kubernetes Deployment, Helm Repositories" />
+    <meta name="author" content="Ilman Iqbal" />
+    <title>Helm Made Simple: Managing Kubernetes Apps with Charts</title>
+    <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "Article",
+            "headline": "Helm Made Simple: Managing Kubernetes Apps with Charts",
+            "author": {
+                "@type": "Person",
+                "name": "Ilman Iqbal",
+                "url": "https://www.linkedin.com/in/ilman-iqbal-096308172"
+            },
+            "publisher": {
+                "@type": "Organization",
+                "name": "Ilman Iqbal",
+                "url": "https://ilmaniqbal.com",
+                "logo": {
+                    "@type": "ImageObject",
+                    "url": "https://ilmaniqbal.com/img/logo.png"
+                }
+            },
+            "datePublished": "2025-09-28",
+            "dateModified": "2025-09-28",
+            "image": [
+                "https://ilmaniqbal.com/img/helm-1.png"
+            ],
+            "description": "Learn how to use Helm to simplify Kubernetes deployments with charts, repositories, and templates. Deploy Curity and User Management app with MongoDB using Helm on k3d.",
+            "articleBody": "Helm simplifies Kubernetes deployments by packaging manifests into reusable charts. This article covers why Helm is better than raw kubectl, explains charts, values, templates, releases, and repositories, and walks through installing Curity, creating your own charts, testing them, and running Kubernetes with k3d. It concludes with converting a User Management app with MongoDB into a Helm deployment.",
+            "keywords": "Helm, Kubernetes, Helm Charts, Curity Identity Server, k3d, MongoDB, Spring Boot, User Management, Kubernetes Deployment, Helm Repositories",
+            "mainEntityOfPage": {
+                "@type": "WebPage",
+                "@id": "https://ilmaniqbal.com/helm-charts-for-kubernetes-apps.html"
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro&display=swap" rel="stylesheet" />
+    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/blog.css" rel="stylesheet">
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-8PPCHX9PDV"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { dataLayer.push(arguments); }
+        gtag('js', new Date());
+        gtag('config', 'G-8PPCHX9PDV');
+    </script>
+</head>
+
+<body>
+    <div class="container">
+        <header class="site-header">
+            <a href="index.html" class="site-logo-wrapper" style="text-decoration: none; color: inherit;">
+                <div class="site-logo"><i class="fas fa-code fa-2x"></i></div>
+                <h1>Ilman Iqbal's Blog</h1>
+            </a>
+        </header>
+
+        <h2 class="tm-post-title">Helm Made Simple: Managing Kubernetes Apps with Charts</h2>
+        <p class="meta">Sep 28, 2025 posted by Ilman Iqbal</p>
+
+        <p>
+            Learn how Helm simplifies Kubernetes application management by packaging your deployments, services,
+            and ingress configurations into reusable charts. This guide walks you through installing Helm on Ubuntu,
+            creating and customizing your own Helm chart for a User Management service, working with values overrides,
+            and finally packaging and sharing your chart for reuse across different environments.
+        </p>
+        <div style="text-align: center;">
+            <img id="half-width" width="50%" src="img/helm-1.png" alt="Helm Kubernetes illustration" />
+        </div>
+
+        <h3>What is Helm?</h3>
+
+        <p>
+            Deploying applications into Kubernetes using raw YAML manifests can be repetitive and error-prone.
+            Imagine having to manage dozens of deployments, services, and configs for multiple environments (dev, QA,
+            prod). That’s where Helm, the Kubernetes package manager, comes in.
+        </p>
+
+        <p><em>Think of Helm as <code>apt</code> or <code>yum</code> for Kubernetes.</em></p>
+
+        <p>Helm helps you:</p>
+        <ul>
+            <li>Package your Kubernetes manifests into <strong>charts</strong></li>
+            <li>Parameterize them for different environments (via <code>values.yaml</code>)</li>
+            <li>Handle dependencies (for example: start a database before the app)</li>
+            <li>Manage versions and perform rollbacks easily</li>
+            <li>Share charts via repositories</li>
+        </ul>
+
+        <h3>Why not just <code>kubectl apply -f</code>?</h3>
+        <p>If you only use <code>kubectl</code>, you'll encounter several practical problems:</p>
+        <ul>
+            <li><strong>Multiple manifests</strong> → Deployments, Services, ConfigMaps, Ingresses all need to be
+                applied manually.
+                <br> But, helm bundles them into one chart
+            </li>
+
+            <li><strong>Dependency ordering</strong> → Example: database must be deployed before the app.
+                <br> But, helm handles via <code>Chart.yaml</code> dependencies
+            </li>
+
+            <li><strong>Rollback is difficult</strong> → Manually reverting YAML is error-prone.
+                <br> But, helm tracks revisions & supports rollback
+                <pre><code>helm history myapp
+helm rollback myapp &lt;revision-id&gt;</code></pre>
+            </li>
+
+            <li><strong>Environment-specific configs</strong> → Different Docker tags, replica counts, or secrets for
+                dev/QA/prod.
+                <br> But, helm uses separate values files
+                <pre><code>helm install myapp ./myapp -f values-dev.yaml</code></pre>
+            </li>
+        </ul>
+
+        <h3>Helm Concepts in a Nutshell</h3>
+        <ul>
+            <li><strong>Chart</strong> → A Helm package (like a Debian <code>.deb</code> or RPM).</li>
+            <li><strong>Values</strong> → Configurable parameters (<code>values.yaml</code>).</li>
+            <li><strong>Templates</strong> → Go-templated Kubernetes manifests.</li>
+            <li><strong>Release</strong> → A running instance of a chart in a namespace.</li>
+            <li><strong>Repository</strong> → A place where charts are stored (like Docker Hub, but for Helm).</li>
+        </ul>
+
+        <h3>Installing Helm on Ubuntu</h3>
+        <p>
+            Before using Helm charts, you need to install the Helm CLI. On Ubuntu or other Debian-based systems,
+            you can install Helm in a few simple steps.
+        </p>
+
+        <p><strong>1. Update apt package index</strong></p>
+        <pre><code>sudo apt-get update</code></pre>
+
+        <p><strong>2. Install prerequisite packages (curl, apt-transport-https, gnupg)</strong></p>
+        <pre><code>sudo apt-get install -y curl apt-transport-https gnupg</code></pre>
+
+        <p><strong>3. Add the Helm GPG key</strong></p>
+        <pre><code>curl https://baltocdn.com/helm/signing.asc | sudo apt-key add -</code></pre>
+
+        <p><strong>4. Add the Helm apt repository</strong></p>
+        <pre><code>echo "deb https://baltocdn.com/helm/stable/debian/ all main" | \
+sudo tee /etc/apt/sources.list.d/helm-stable-debian.list</code></pre>
+
+        <p><strong>5. Install Helm</strong></p>
+        <pre><code>sudo apt-get update
+sudo apt-get install helm</code></pre>
+
+        <p><strong>6. Verify installation</strong></p>
+        <pre><code>helm version</code></pre>
+        <pre><code># Example output
+version.BuildInfo{Version:"v3.16.2", GitCommit:"...", GoVersion:"go1.22.2"}
+</code></pre>
+        <p>
+            If you see a version output, Helm is installed successfully and ready to use!
+        </p>
+
+
+        <h3>Working with Helm Repositories (Using Curity as an Example)</h3>
+        <p>
+            Once Helm is installed, the next step is to work with <strong>Helm repositories</strong>.
+            These are collections of charts hosted on web servers, similar to how
+            <code>apt</code> or <code>yum</code> repositories store software packages.
+        </p>
+        <p>
+            Instead of writing and managing all Kubernetes YAML files manually, you can use
+            charts from these repos to quickly deploy common applications like databases,
+            message queues, or identity servers.
+        </p>
+        <p>
+            Let’s walk through an example with the <strong>Curity Identity Server</strong>. Curity is an OAuth and
+            OpenID Connect
+            server used for authentication and API security in enterprise setups. Deploying it
+            manually with YAML would be complex, but with Helm it’s just a few commands.
+        </p>
+
+        <p><strong>1. Add the Curity Helm repository</strong></p>
+        <pre><code># Add the official Curity Helm repo
+helm repo add curity https://curityio.github.io/idsvr-helm/
+</code></pre>
+        <p>
+            This registers the Curity chart repo so you can install charts from it.
+        </p>
+
+        <p><strong>2. Verify repositories</strong></p>
+        <pre><code>helm repo list
+</code></pre>
+        <pre><code># Output
+NAME    URL
+curity  https://curityio.github.io/idsvr-helm/
+</code></pre>
+        <p>
+            Now Helm knows about the <code>curity</code> repository.
+        </p>
+
+        <p><strong>3. Search for charts inside the repo</strong></p>
+        <pre><code>helm search repo curity
+</code></pre>
+        <pre><code># Output
+NAME            CHART VERSION   APP VERSION     DESCRIPTION
+curity/idsvr    0.13.8          10.3.0          A Helm chart for Curity Identity Server
+</code></pre>
+        <p>
+            This shows the available chart (<code>curity/idsvr</code>), its version, and description.
+        </p>
+
+        <p><strong>4. Install Curity Identity Server</strong></p>
+        <pre><code>helm install idsvr-tutorial curity/idsvr \
+  --namespace curity \
+  --create-namespace \
+  --set image.tag=latest \
+  --set curity.config.password=12345678 \
+  --set curity.config.uiEnabled=true \
+  --timeout 10m
+</code></pre>
+        <p>
+            - <code>idsvr-tutorial</code>: your <strong>deployment instance name</strong> for the curity/idsvr chart.
+            <br>
+            - <code>--namespace curity</code>: deploy into a namespace called <code>curity</code>. <br>
+            - <code>--create-namespace</code>: creates the namespace if it doesn’t exist. <br>
+            - <code>--set ...</code>: overrides values defined in the chart’s <code>values.yaml</code> file (e.g.,
+            password, enabling UI). <br>
+            - <code>--timeout 10m</code>: sets the maximum time Helm will wait for all resources to be ready.
+            If deployment takes longer than this, Helm will report a timeout error.
+        </p>
+
+        <p><strong>5. Check installed releases</strong></p>
+        <pre><code>helm list -n curity
+</code></pre>
+        <pre><code># Output
+NAME            NAMESPACE   REVISION   UPDATED               STATUS    CHART        APP VERSION
+idsvr-tutorial  curity      2          2025-09-24 23:37:26   deployed  idsvr-0.13.8 10.3.0
+</code></pre>
+        <p>
+            This shows the deployment instance is running, which chart version is used, and its status.
+        </p>
+
+        <p><strong>6. Inspect Kubernetes resources</strong></p>
+        <pre><code>kubectl get deployments -n curity
+</code></pre>
+        <pre><code># Output
+NAME                     READY   UP-TO-DATE   AVAILABLE   AGE
+idsvr-tutorial-admin     1/1     1            1           10m
+idsvr-tutorial-runtime   1/1     1            1           10m
+</code></pre>
+        <p>
+            Helm deployed two deployments: <code>admin</code> and <code>runtime</code>. Both are ready.
+        </p>
+
+        <pre><code>kubectl get svc -n curity
+</code></pre>
+        <pre><code># Output
+NAME                         TYPE        CLUSTER-IP      PORT(S)
+idsvr-tutorial-admin-svc     ClusterIP   10.43.209.141   6749/TCP ...
+idsvr-tutorial-runtime-svc   ClusterIP   10.43.66.149    8443/TCP ...
+</code></pre>
+        <p>
+            Services expose the pods inside the cluster. These ports (e.g., <code>6749</code>, <code>8443</code>) can be
+            port-forwarded.
+        </p>
+
+        <p><strong>7. Port-forward to access locally</strong></p>
+        <pre><code># Forward Admin UI service to localhost:6749
+kubectl port-forward svc/idsvr-tutorial-admin-svc 6749:6749 -n curity
+
+# Forward Runtime service to localhost:9443
+kubectl port-forward svc/idsvr-tutorial-runtime-svc 9443:8443 -n curity
+</code></pre>
+        <p>
+            By forwarding the <strong>service</strong>, you automatically access all pods behind it.
+            You can now open <code>http://localhost:6749</code> to access the admin UI, and
+            <code>https://localhost:9443</code> for the runtime.
+        </p>
+
+        <p><strong>8. Upgrade with new configs</strong></p>
+        <pre><code>helm upgrade idsvr-tutorial curity/idsvr \
+  --namespace curity \
+  --set curity.admin.logging.level=DEBUG \
+  --set curity.runtime.logging.level=DEBUG
+</code></pre>
+        <p>
+            Updates your existing <strong>deployment instance</strong> (<code>idsvr-tutorial</code>) with new
+            configuration values, without reinstalling from scratch.
+        </p>
+
+        <p><strong>9. Uninstall the release</strong></p>
+        <pre><code>helm delete idsvr-tutorial -n curity
+</code></pre>
+        <p>
+            Deletes all Kubernetes resources (Deployments, Services, ConfigMaps, etc.) created by this instance. The
+            namespace remains unless you explicitly delete it.
+        </p>
+
+
+        <h3>Helm Chart Structure</h3>
+        <p>A Helm chart is essentially a package containing all the Kubernetes manifests and configuration needed to
+            deploy an application. A typical chart looks like this:</p>
+        <pre><code>springboot-helm-chart/
+  Chart.yaml       # Metadata about the chart (name, version, description)
+  values.yaml      # Default configuration values for this chart
+  charts/          # Dependencies (sub-charts)
+  templates/       # Templates that generate Kubernetes manifests
+    deployment.yaml
+    service.yaml
+    ingress.yaml
+    _helpers.tpl   # Custom template helpers for reuse
+</code></pre>
+
+        <p>Charts use <code>values.yaml</code> to define configurable parameters. You can reference these values in your
+            templates using the syntax:</p>
+        <pre><code>{{ .Values.variableName }}</code></pre>
+
+        <p>Example usage:</p>
+        <pre><code># In deployment.yaml template
+image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+replicas: {{ .Values.replicaCount }}
+
+# In values.yaml
+image:
+  repository: myapp/springboot
+  tag: 4.0.0
+replicaCount: 2
+</code></pre>
+
+        <p>
+            You can override these values at install or upgrade time using <code>--set</code> or a custom values file
+            (e.g., <code>-f values-prod.yaml</code>), allowing you to deploy the same chart across multiple environments
+            with different configurations.
+        </p>
+        <h3>Converting Existing Kubernetes Manifests into a Helm Chart</h3>
+        <p>
+            In the <a href="https://ilmaniqbal.com/kubernetes-fundamentals.html" target="_blank">
+                Kubernetes Made Simple</a> and <a
+                href="https://ilmaniqbal.com/kubernetes-stateful-sets-with-mongodb-replica-set"
+                target="_blank">Kubernetes StatefulSets with MongoDB</a> blog post, we created several Kubernetes
+            manifests to deploy a
+            <strong>User Management</strong> application with a MongoDB StatefulSet:
+        </p>
+
+        <ul>
+            <li><code>user-management-deployment.yaml</code></li>
+            <li><code>user-management-service.yaml</code></li>
+            <li><code>app-configmap.yaml</code></li>
+            <li><code>mongo-headless-svc.yaml</code></li>
+            <li><code>mongo-statefulset.yaml</code></li>
+        </ul>
+
+        <p>
+            Instead of managing these YAMLs manually, we can package them into a Helm chart for easier deployment,
+            configuration, and reusability. We’ll also add a new <code>user-management-ingress.yaml</code> to expose
+            the app externally.
+        </p>
+
+        <p><strong>1. Create a new chart</strong></p>
+        <pre><code>helm create user-management
+</code></pre>
+        <p>
+            This creates a new directory <code>user-management/</code> with a standard Helm chart structure, including
+            <code>Chart.yaml</code>, <code>values.yaml</code>, and <code>templates/</code>.
+        </p>
+
+        <p><strong>2. Review and edit Chart.yaml</strong></p>
+        <p>
+            The <code>Chart.yaml</code> file defines metadata about your chart (name, description, version, etc.).
+            Example:
+        </p>
+        <pre><code># user-management/Chart.yaml
+apiVersion: v2
+name: user-management
+description: A Helm chart for deploying the User Management app
+type: application
+version: 0.1.0          # chart version
+appVersion: "1.0.0"     # actual app version
+</code></pre>
+        <p>
+            You can reference these values inside your templates with <code>.Chart.*</code>, for example:
+        </p>
+        <pre><code>metadata:
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/version: {{ .Chart.Version }}
+    app.kubernetes.io/appVersion: {{ .Chart.AppVersion }}
+</code></pre>
+        <p>
+            This ensures your manifests always carry chart metadata (useful for debugging and when sharing charts).
+        </p>
+
+        <p><strong>3. Replace template files with your manifests</strong></p>
+        <p>
+            Copy the manifests from the earlier blog post into the <code>templates/</code> folder and rename them.
+            By renaming, you also stick to the standard Helm chart layout
+            (<code>deployment.yaml</code>, <code>service.yaml</code>, <code>ingress.yaml</code>), which makes it easier
+            for others to recognize the purpose of each file at a glance. If you ever share your chart
+            (for example, publish it to a repo), other developers will expect to see these common naming patterns.
+        </p>
+        <ul>
+            <li><code>templates/deployment.yaml</code> ← <code>user-management-deployment.yaml</code></li>
+            <li><code>templates/service.yaml</code> ← <code>user-management-service.yaml</code></li>
+            <li><code>templates/configmap.yaml</code> ← <code>app-configmap.yaml</code></li>
+            <li><code>templates/mongo-statefulset.yaml</code> ← <code>mongo-statefulset.yaml</code></li>
+            <li><code>templates/mongo-service.yaml</code> ← <code>mongo-headless-svc.yaml</code></li>
+            <li><code>templates/ingress.yaml</code> ← (new file) <code>user-management-ingress.yaml</code></li>
+        </ul>
+
+        <p><strong>4. Parameterize values</strong></p>
+        <p>
+            Replace hardcoded values in your manifests with <code>{{ .Values.* }}</code> placeholders and define them
+            in <code>values.yaml</code>. For example:
+        </p>
+        <pre><code># templates/deployment.yaml
+replicas: {{ .Values.userManagement.replicas }}
+image: "{{ .Values.userManagement.image.repository }}:{{ .Values.userManagement.image.tag }}"
+env:
+- name: EXTERNAL_BACKEND_URL
+  value: "{{ .Values.userManagement.externalBackendUrl }}"
+
+# values.yaml
+userManagement:
+  replicas: 2
+  image:
+    repository: user-management
+    tag: latest
+  externalBackendUrl: "http://external-backend-svc:8088"
+</code></pre>
+
+        <p><strong>5. Add an Ingress for user-management</strong></p>
+        <p>
+            Create a new file <code>templates/ingress.yaml</code>:
+        </p>
+        <pre><code>apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Chart.Name }}-ingress           # Uses the chart name from Chart.yaml (e.g., "user-management")
+  namespace: {{ .Release.Namespace }}       # The namespace where the Helm release is installed (set with --namespace when you run `helm install`)
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: {{ .Values.ingress.host }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Values.userManagement.serviceName }}
+            port:
+              number: 8082
+
+# values.yaml
+ingress:
+  host: user-management.local
+userManagement:
+  serviceName: user-management-svc
+</code></pre>
+
+        <p><strong>6. Install your chart</strong></p>
+        <pre><code>helm install user-mgmt user-management/ \
+  --namespace user-mgmt-ns \
+  --create-namespace \
+  --timeout 10m
+</code></pre>
+        <p>
+            This installs your chart into a fresh namespace <code>user-mgmt-ns</code>
+        </p>
+
+        <p>
+            Helm lets you customize deployments in two ways:
+        </p>
+        <ul>
+            <li>
+                <code>--set key=value</code> → override specific values directly in the command.
+                <br>Example:
+                <pre><code>helm install user-mgmt user-management/ \
+  --namespace user-mgmt-ns \
+  --set userManagement.image.tag=v2 \
+  --set ingress.host=custom.local</code></pre>
+                This updates the container image tag and ingress host without editing <code>values.yaml</code>.
+            </li>
+            <br>
+            <li>
+                <code>-f custom-values.yaml</code> → supply a values file with overrides.
+                <br>Example:
+                <pre><code>helm install user-mgmt user-management/ \
+  --namespace user-mgmt-ns \
+  -f custom-values.yaml</code></pre>
+                This is better for multiple changes or when working in different environments
+                (e.g., dev, staging, prod).
+            </li>
+        </ul>
+
+        <p><strong>7. Verify installation</strong></p>
+        <pre><code>kubectl get all -n user-mgmt-ns
+kubectl get ingress -n user-mgmt-ns
+</code></pre>
+
+        <p>
+            You now have a fully parameterized Helm chart for your User Management application.
+            Any changes (replica counts, image versions, or ingress hostnames) can be managed easily via
+            <code>values.yaml</code>.
+        </p>
+
+        <h3>Share your Helm chart</h3>
+        <p>
+            Once your Helm chart is ready, you can share it with others or use it across different environments. There
+            are multiple ways to distribute your chart effectively.
+        </p>
+
+        <ul>
+            <li>
+                <strong>Package and publish to a Helm repository</strong> → You can package your chart and host it in a
+                Helm repository, making it easy for others to install with a single command:
+                <pre><code>helm package user-management
+# This generates a versioned .tgz file like user-management-0.1.0.tgz</code></pre>
+                <p>
+                    The version comes from <code>Chart.yaml</code>. You can update <code>version</code> and
+                    <code>appVersion</code> before packaging.
+                </p>
+                <pre><code># Create an index file for your repository
+helm repo index ./charts --url https://example.com/charts</code></pre>
+                <p>
+                    <strong>Explanation:</strong> <code>helm repo index ./charts --url https://example.com/charts</code>
+                    generates an <code>index.yaml</code> file in the <code>./charts</code> folder, listing all packaged
+                    charts. The <code>--url</code> parameter specifies where the charts will be hosted online. This can
+                    be any web-accessible server, such as an HTTP server, GitHub Pages, or Azure Container Registry
+                    (ACR).
+                </p>
+                <pre><code># Upload .tgz files and index.yaml to your server (e.g., ACR or web server)
+
+# On client machines, add the repo and update
+helm repo add my-charts https://example.com/charts
+helm repo update
+
+# Install the chart from the repo, with optional namespace, timeout, or value overrides
+helm install user-mgmt my-charts/user-management \
+  --namespace user-mgmt-ns \
+  --create-namespace \
+  --timeout 10m \
+  --set userManagement.image.tag=v2 \
+  --set ingress.host=custom.local
+</code></pre>
+                <p>
+                    This method is ideal for teams, CI/CD pipelines, or public chart distribution. You can override
+                    values with <code>--set</code> or supply a custom values file (<code>-f custom-values.yaml</code>)
+                    during install.
+                </p>
+
+                <div class="tip">
+                    <p>
+                        <strong>Note:</strong> You can host the chart repository on various platforms, including Azure
+                        Container
+                        Registry (ACR). For example, to add a Helm repository hosted on ACR:
+                    </p>
+                    <pre><code>az acr helm repo add --name &lt;acr-name&gt; --resource-group &lt;resource-group&gt; --username &lt;username&gt; --password &lt;password&gt;
+helm repo update</code></pre>
+                    <p>
+                        Replace <code>&lt;acr-name&gt;</code>, <code>&lt;resource-group&gt;</code>,
+                        <code>&lt;username&gt;</code>, and
+                        <code>&lt;password&gt;</code> with your ACR details.
+                    </p>
+                </div>
+            </li>
+
+            <br>
+
+            <li>
+                <strong>Share via GitHub or other version control</strong> → You can push the entire chart directory to
+                a repository:
+                <pre><code>git add user-management
+git commit -m "Add user-management Helm chart"
+git push origin main</code></pre>
+                <p>
+                    Other developers can clone the repo and install directly from the folder. You can also pass
+                    namespace, timeout, and value overrides as needed:
+                </p>
+                <pre><code>helm install user-mgmt ./user-management \
+  --namespace user-mgmt-ns \
+  --create-namespace \
+  --timeout 10m \
+  --set userManagement.image.tag=v2 \
+  --set ingress.host=custom.local</code></pre>
+                <p>
+                    This approach is simple for sharing within small teams or when you do not have a dedicated Helm
+                    repository.
+                </p>
+            </li>
+        </ul>
+
+        <p>
+            By versioning your chart, maintaining standard structure, and using proper packaging, you make it easier for
+            others to reuse, update, and deploy your application consistently. Always document any required overrides,
+            such as namespace, image tags, or ingress hosts, so that installation is smooth for other users.
+        </p>
+
+    </div>
+</body>
+
+</html>
